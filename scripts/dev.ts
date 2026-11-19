@@ -6,7 +6,7 @@ import { handleApi } from "../server/api";
 import { bunDb } from "../server/db-bun";
 
 const pub = join(import.meta.dir, "../public");
-const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, anthropicKey: process.env.ANTHROPIC_API_KEY };
+const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, anthropicKey: process.env.ANTHROPIC_API_KEY, openaiKey: process.env.OPENAI_API_KEY };
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 3000),

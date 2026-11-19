@@ -25,7 +25,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Hoje** — um pacote por dia (o primeiro dia de uso abre o pacote 1). Cada frase tem o trecho nativo grifado, tradução, dica com 2 exemplos extras (com áudio), áudio normal e devagar, e "Sei essa".
 - **Na vida real** — mini-diálogo com as frases do pacote; a tradução fica escondida até pedir.
 - **Diálogo** — a cena do pacote, turno a turno: a outra pessoa fala (com áudio), você responde **em voz alta**. O reconhecimento de voz do navegador transcreve, o app compara com a fala certa (tolerante a contrações e pontuação) e marca o que faltou. Sem reconhecimento de voz, uma caixa de texto aceita o ditado do teclado. A melhor nota de cada cena fica salva.
-- **IA** — conversa livre com um nativo no papel da situação (Claude Opus 5). Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
+- **IA** — conversa livre com um nativo no papel da situação, usando a chave de IA da própria pessoa (OpenAI ou Anthropic). Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
 - **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
@@ -47,22 +47,17 @@ Publicar no Cloudflare:
 bunx wrangler d1 create papo-reto              # copie o database_id pro wrangler.toml
 bunx wrangler d1 migrations apply papo-reto --remote
 bunx wrangler secret put SIGNUP_CODE
-bunx wrangler secret put ANTHROPIC_API_KEY
+bunx wrangler secret put ANTHROPIC_API_KEY   # opcional: chave do app pra quem não tem a própria
 bun run build && bunx wrangler deploy
 ```
 
 ## Conversa com IA
 
-A rota `POST /api/chat` (em `server/chat.ts`) chama a API da Anthropic no servidor — a chave nunca vai pro navegador.
+Cada pessoa pode usar **a própria chave de API** — da **OpenAI** (`sk-...`, modelo padrão `gpt-5.4-mini`) ou da **Anthropic** (`sk-ant-...`, modelo padrão `claude-opus-5`) — colando na aba IA. O modelo pode ser trocado.
 
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...   # crie em console.anthropic.com
-bun dev                               # ou bun preview
-```
-
-Sem a chave, a aba IA mostra um aviso e o resto do app funciona normal. Cada mensagem custa em torno de 1 centavo de dólar.
-
-A rota da IA só responde pra quem está logado.
+- A chave fica salva **só no aparelho** da pessoa (não vai pro banco) e segue por HTTPS a cada mensagem até `POST /api/chat`, que repassa pra empresa de IA. O servidor não guarda nem registra.
+- Opcional: o servidor pode ter uma chave própria (`ANTHROPIC_API_KEY` ou `OPENAI_API_KEY`) pra quem não tiver chave — com limite de 60 mensagens por dia por usuário (`AI_DAILY_LIMIT`).
+- Login da CLI da OpenAI/ChatGPT não funciona em sites — só chave de API.
 
 ## Estrutura
 

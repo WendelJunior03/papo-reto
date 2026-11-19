@@ -15,15 +15,17 @@ import {
   clearCookie, createSession, destroySession, hashPassword, LOCK_MINUTES, MAX_FAILED,
   sessionCookie, userFromRequest, verifyPassword,
 } from "./auth";
-import { handleChat } from "./chat";
+import { handleChat, providerFor, type ChatAuth } from "./chat";
 import type { Db } from "./db";
 
 export interface ApiConfig {
   db: Db;
   /** Código de convite para criar conta. Sem ele, o cadastro fica fechado. */
   signupCode?: string;
+  /** Chaves do servidor (opcionais). Quem colocar a própria chave no app usa a dela. */
   anthropicKey?: string;
-  /** Mensagens pra IA por usuário por dia (padrão 60). */
+  openaiKey?: string;
+  /** Mensagens pra IA por usuário por dia usando a chave do servidor (padrão 60). */
   aiDailyLimit?: number;
 }
 
@@ -150,7 +152,7 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
 
   switch (route) {
     case "GET /api/me":
-      return json({ username: user.username });
+      return json({ username: user.username, serverAi: !!(cfg.anthropicKey || cfg.openaiKey) });
 
     case "GET /api/progress": {
       const row = await db.first<{ progress: string | null; progress_at: string | null }>(
@@ -170,6 +172,23 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
     }
 
     case "POST /api/chat": {
+      // Chave do próprio usuário: vem do aparelho dele a cada pedido e não é guardada nem registrada.
+      const userKey = req.headers.get("x-ai-key")?.trim();
+      const model = req.headers.get("x-ai-model")?.trim().slice(0, 60) || undefined;
+      if (userKey) {
+        const provider = providerFor(userKey);
+        if (!provider) return json({ error: "Chave não reconhecida. Use uma chave da OpenAI (sk-...) ou da Anthropic (sk-ant-...)." }, 400);
+        if (model && !/^[a-zA-Z0-9._:-]+$/.test(model)) return json({ error: "Nome de modelo inválido." }, 400);
+        return handleChat(req, { provider, key: userKey, model });
+      }
+
+      const serverAuth: ChatAuth | null = cfg.anthropicKey
+        ? { provider: "anthropic", key: cfg.anthropicKey }
+        : cfg.openaiKey
+          ? { provider: "openai", key: cfg.openaiKey }
+          : null;
+      if (!serverAuth) return json({ error: "Adicione sua chave de IA pra conversar.", needsKey: true }, 403);
+
       const day = new Date().toISOString().slice(0, 10);
       await db.run(
         "INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1) ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
@@ -180,7 +199,7 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
       if ((used?.count ?? 0) > (cfg.aiDailyLimit ?? 60)) {
         return json({ error: "Você chegou no limite de conversas com a IA hoje. Amanhã libera de novo." }, 429);
       }
-      return handleChat(req, cfg.anthropicKey);
+      return handleChat(req, serverAuth);
     }
   }
 

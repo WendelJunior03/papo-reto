@@ -2,7 +2,7 @@ import { allPhrases, packs, phraseId } from "./data";
 import { dateKey, type DateKey } from "./lib/dates";
 import { packIndexFor, shuffle, streak } from "./lib/schedule";
 import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
-import { load, save, type SavedData } from "./lib/storage";
+import { load, loadAiKey, save, type AiKey, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
 
 export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes";
@@ -67,12 +67,16 @@ export interface AppState {
   ai: AiChat | null;
   showDialoguePt: boolean;
   canInstall: boolean;
+  /** Chave de IA do usuário (só neste aparelho) e se o servidor tem chave própria. */
+  aiKey: AiKey | null;
+  serverAi: boolean;
+  aiSettings: { open: boolean; error: string | null };
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
 const REVIEW_LIMIT = 10;
 
-export function createState(user: string, now = new Date(), initial?: SavedData): AppState {
+export function createState(user: string, now = new Date(), initial?: SavedData, serverAi = false): AppState {
   const data = initial ?? load(user);
   const today = dateKey(now);
   data.start ??= today;
@@ -94,6 +98,9 @@ export function createState(user: string, now = new Date(), initial?: SavedData)
     ai: null,
     showDialoguePt: false,
     canInstall: false,
+    aiKey: loadAiKey(user),
+    serverAi,
+    aiSettings: { open: false, error: null },
   };
 }
 

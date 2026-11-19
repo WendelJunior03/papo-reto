@@ -17,7 +17,8 @@ import {
 } from "./state";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
-import { lastUser, load, save, setLastUser } from "./lib/storage";
+import { lastUser, load, save, saveAiKey, setLastUser } from "./lib/storage";
+import { providerFor } from "./lib/provider";
 import { renderAuth, type AuthView } from "./views/auth";
 import { renderDialogue } from "./views/dialogue";
 import { renderAi } from "./views/ai";
@@ -60,7 +61,8 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         ? await api.signup(username, password, String(f.get("code") ?? ""))
         : await api.login(username, password);
     auth.busy = false;
-    await start(res.username);
+    const me = await api.me().catch(() => ({ serverAi: false }));
+    await start(res.username, true, me.serverAi);
   } catch (e) {
     auth.busy = false;
     auth.error = e instanceof ApiError ? e.message : "Não foi possível entrar.";
@@ -109,16 +111,16 @@ window.addEventListener("online", () => {
 });
 
 /** Entra no app como `user`: junta o progresso do aparelho com o da conta e desenha. */
-async function start(user: string, online = true): Promise<void> {
+async function start(user: string, online = true, serverAi = false): Promise<void> {
   setLastUser(user);
   document.body.classList.remove("auth");
-  s = createState(user);
+  s = createState(user, new Date(), undefined, serverAi);
   render();
   if (!online) return;
   try {
     const remote = await api.getProgress();
     const merged = mergeData(load(user), remote.data);
-    s = createState(user, new Date(), merged);
+    s = createState(user, new Date(), merged, serverAi);
     save(user, merged);
     render();
     await pushNow();
@@ -130,7 +132,7 @@ async function start(user: string, online = true): Promise<void> {
 async function boot(): Promise<void> {
   try {
     const me = await api.me();
-    await start(me.username);
+    await start(me.username, true, me.serverAi);
   } catch (e) {
     const cached = lastUser();
     if (e instanceof ApiError && e.status === 0 && cached) {
@@ -288,15 +290,22 @@ async function sendToAi(text: string): Promise<void> {
   try {
     const res = await fetch("./api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(s.aiKey ? { "X-AI-Key": s.aiKey.key, ...(s.aiKey.model ? { "X-AI-Model": s.aiKey.model } : {}) } : {}),
+      },
       body: JSON.stringify({
         scenario: { title: pack.title, scene: pack.scene, phrases: pack.phrases.map((p) => plain(p.en)) },
         messages: chat.messages.slice(-24).map((m) => ({ role: m.role, content: m.content })),
       }),
     });
     const data = (await res.json().catch(() => ({}))) as {
-      reply?: string; reply_pt?: string; correction?: string | null; correction_note?: string | null; error?: string;
+      reply?: string; reply_pt?: string; correction?: string | null; correction_note?: string | null; error?: string; needsKey?: boolean;
     };
+    if (data.needsKey) {
+      s.serverAi = false;
+      s.aiSettings = { open: true, error: null };
+    }
     if (!res.ok || !data.reply) {
       throw new Error(
         data.error ?? (res.status === 404 ? "A conversa com IA precisa do servidor do app (bun dev ou bun preview com ANTHROPIC_API_KEY)." : "A IA não respondeu. Tenta de novo."),
@@ -388,6 +397,15 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "dl-restart": () => { const revealed = startDialogue(s); render(); window.scrollTo(0, 0); playLines(revealed); },
 
   "ai-start": () => void sendToAi(""),
+  "ai-key-edit": () => { s.aiSettings = { open: true, error: null }; render(); },
+  "ai-key-cancel": () => { s.aiSettings = { open: false, error: null }; render(); },
+  "ai-key-remove": () => {
+    saveAiKey(s.user, null);
+    s.aiKey = null;
+    s.aiSettings = { open: false, error: null };
+    render();
+    toast("Chave removida deste aparelho", true);
+  },
   "ai-mic": () => aiMic(),
   "ai-say": (el) => { const m = s.ai?.messages[Number(el.dataset.i)]; if (m) speakTts(m.content); },
   "ai-say-fix": (el) => { const m = s.ai?.messages[Number(el.dataset.i)]; if (m?.correction) speakTts(m.correction); },
@@ -453,6 +471,25 @@ document.addEventListener("submit", (e) => {
   if (form.dataset.form === "dl-type") {
     const value = (document.getElementById("dl-input") as HTMLInputElement | null)?.value.trim();
     if (value) checkAnswer([value]);
+  }
+  if (form.dataset.form === "ai-key") {
+    const f = new FormData(form);
+    const key = String(f.get("key") ?? "").trim();
+    const model = String(f.get("model") ?? "").trim();
+    if (!providerFor(key)) {
+      s.aiSettings = { open: true, error: "Essa não parece uma chave da OpenAI (sk-...) nem da Anthropic (sk-ant-...)." };
+      return render();
+    }
+    if (model && !/^[a-zA-Z0-9._:-]+$/.test(model)) {
+      s.aiSettings = { open: true, error: "Nome de modelo inválido. Deixe em branco pra usar o padrão." };
+      return render();
+    }
+    s.aiKey = { key, model };
+    saveAiKey(s.user, s.aiKey);
+    s.aiSettings = { open: false, error: null };
+    render();
+    toast("Chave salva neste aparelho", true);
+    return;
   }
   if (form.dataset.form === "ai-send") {
     const value = (document.getElementById("ai-input") as HTMLTextAreaElement | null)?.value ?? "";

@@ -77,3 +77,29 @@ export function setLastUser(user: string | null): void {
     // ignora
   }
 }
+
+/** Chave de IA do próprio usuário: fica só neste aparelho (nunca vai pro banco). */
+export interface AiKey {
+  key: string;
+  model: string;
+}
+
+const aiKeyFor = (user: string): string => `papo-reto:ai:${user.toLowerCase()}`;
+
+export function loadAiKey(user: string): AiKey | null {
+  try {
+    const raw = localStorage.getItem(aiKeyFor(user));
+    return raw ? (JSON.parse(raw) as AiKey) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAiKey(user: string, value: AiKey | null): void {
+  try {
+    if (value) localStorage.setItem(aiKeyFor(user), JSON.stringify(value));
+    else localStorage.removeItem(aiKeyFor(user));
+  } catch {
+    // sem armazenamento: a chave vale só até fechar o app
+  }
+}

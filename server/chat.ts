@@ -1,13 +1,24 @@
 /**
  * POST /api/chat — conversa livre com IA, no papel de um nativo da situação escolhida.
+ * Funciona com chave da Anthropic (Claude) ou da OpenAI (GPT): a chave pode ser a do
+ * próprio usuário (vem do aparelho dele, a cada pedido, e não é guardada) ou a do servidor.
  * Usa só a API padrão de Request/Response: roda no servidor do Bun e num Cloudflare Worker.
- * A chave fica no servidor (ANTHROPIC_API_KEY); o navegador nunca vê.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import OpenAI from "openai";
+import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { DEFAULT_MODEL, type Provider } from "../src/lib/provider";
 
-const MODEL = "claude-opus-5";
+export { providerFor } from "../src/lib/provider";
+
+export interface ChatAuth {
+  provider: Provider;
+  key: string;
+  model?: string;
+}
+
 const MAX_TURNS = 24;
 const MAX_CHARS = 600;
 
@@ -36,6 +47,7 @@ const ChatRequest = z.object({
     .max(MAX_TURNS),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;
+type Turn = ChatRequest["messages"][number];
 
 function systemPrompt(s: ChatRequest["scenario"]): string {
   return `You are a friendly American native speaker role-playing with a Brazilian learner of English who is practicing everyday conversation.
@@ -51,57 +63,91 @@ How to talk:
 Corrections go only in the correction fields, never in your in-character reply. Correct the learner's last message when it has a grammar mistake, sounds unnatural or textbook-like, or is in Portuguese: give the way a native would say it. Leave small typos and perfectly fine messages alone (null).`;
 }
 
-let client: Anthropic | null = null;
+/** A IA abre a conversa, mas as APIs esperam que a primeira mensagem seja do usuário. */
+const KICKOFF: Turn = { role: "user", content: "(Start the role-play with a short, natural opening line.)" };
+const withKickoff = (messages: Turn[]): Turn[] => (messages[0]?.role === "user" ? messages : [KICKOFF, ...messages]);
 
-export async function handleChat(req: Request, apiKey?: string): Promise<Response> {
-  if (req.method !== "POST") return json({ error: "Use POST" }, 405);
+class ChatFailure extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
 
+async function askAnthropic(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
+  const client = new Anthropic({ apiKey: auth.key });
+  try {
+    const response = await client.beta.messages.parse({
+      model: auth.model || DEFAULT_MODEL.anthropic,
+      max_tokens: 2000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      output_config: { effort: "low", format: betaZodOutputFormat(ChatReply) },
+      system: systemPrompt(body.scenario),
+      messages: withKickoff(body.messages),
+    });
+    if (response.stop_reason === "refusal" || !response.parsed_output) {
+      throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
+    }
+    return response.parsed_output;
+  } catch (error) {
+    if (error instanceof ChatFailure) throw error;
+    if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
+      throw new ChatFailure("A chave da Anthropic foi recusada. Confira se copiou certo.", 401);
+    }
+    if (error instanceof Anthropic.NotFoundError) throw new ChatFailure("Esse modelo não existe na sua conta da Anthropic.", 400);
+    if (error instanceof Anthropic.RateLimitError) throw new ChatFailure("Limite da sua conta Anthropic atingido. Espera um pouco.", 429);
+    if (error instanceof Anthropic.APIConnectionError) throw new ChatFailure("Sem conexão com a Anthropic agora.", 502);
+    if (error instanceof Anthropic.APIError) throw new ChatFailure(`Erro da Anthropic (${error.status ?? "?"}). Tenta de novo.`, 502);
+    throw error;
+  }
+}
+
+async function askOpenAI(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
+  const client = new OpenAI({ apiKey: auth.key });
+  try {
+    const completion = await client.chat.completions.parse({
+      model: auth.model || DEFAULT_MODEL.openai,
+      messages: [{ role: "system", content: systemPrompt(body.scenario) }, ...withKickoff(body.messages)],
+      response_format: zodResponseFormat(ChatReply, "chat_reply"),
+    });
+    const msg = completion.choices[0]?.message;
+    if (!msg?.parsed) throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
+    return msg.parsed;
+  } catch (error) {
+    if (error instanceof ChatFailure) throw error;
+    if (error instanceof OpenAI.AuthenticationError || error instanceof OpenAI.PermissionDeniedError) {
+      throw new ChatFailure("A chave da OpenAI foi recusada. Confira se copiou certo.", 401);
+    }
+    if (error instanceof OpenAI.NotFoundError) throw new ChatFailure("Esse modelo não existe na sua conta da OpenAI.", 400);
+    if (error instanceof OpenAI.RateLimitError) {
+      throw new ChatFailure("Limite ou crédito da sua conta OpenAI acabou. Confira em platform.openai.com.", 429);
+    }
+    if (error instanceof OpenAI.APIConnectionError) throw new ChatFailure("Sem conexão com a OpenAI agora.", 502);
+    if (error instanceof OpenAI.APIError) throw new ChatFailure(`Erro da OpenAI (${error.status ?? "?"}). Tenta de novo.`, 502);
+    throw error;
+  }
+}
+
+export async function handleChat(req: Request, auth: ChatAuth): Promise<Response> {
   let body: ChatRequest;
   try {
     body = ChatRequest.parse(await req.json());
   } catch {
     return json({ error: "Pedido inválido" }, 400);
   }
-
-  // A IA abre a conversa, mas a API exige que a primeira mensagem seja do usuário.
-  const kickoff: Anthropic.Beta.BetaMessageParam = { role: "user", content: "(Start the role-play with a short, natural opening line.)" };
-  const messages: Anthropic.Beta.BetaMessageParam[] =
-    body.messages[0]?.role === "user" ? body.messages : [kickoff, ...body.messages];
-
   try {
-    // Sem credencial o construtor lança erro; fica dentro do try pra virar uma resposta clara.
-    client ??= new Anthropic(apiKey ? { apiKey } : {});
-    const response = await client.beta.messages.parse({
-      model: MODEL,
-      max_tokens: 2000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "low", format: betaZodOutputFormat(ChatReply) },
-      system: systemPrompt(body.scenario),
-      messages,
-    });
-    if (response.stop_reason === "refusal" || !response.parsed_output) {
-      return json({ error: "A IA não conseguiu responder essa. Tenta reformular." }, 502);
-    }
-    return json(response.parsed_output);
+    const reply = auth.provider === "openai" ? await askOpenAI(auth, body) : await askAnthropic(auth, body);
+    return json(reply);
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      return json({ error: "Chave da API inválida ou ausente no servidor." }, 503);
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return json({ error: "Muitas mensagens seguidas. Espera uns segundos." }, 429);
-    }
-    if (error instanceof Anthropic.APIConnectionError) {
-      return json({ error: "Sem conexão com a IA agora." }, 502);
-    }
-    if (error instanceof Anthropic.APIError) {
-      return json({ error: `Erro da IA (${error.status ?? "?"}). Tenta de novo.` }, 502);
-    }
-    // Sem credencial o SDK falha antes de chamar a API; qualquer outro imprevisto cai aqui também.
-    console.error("[api/chat]", error);
-    return json({ error: "A IA não está disponível: o servidor precisa da ANTHROPIC_API_KEY configurada." }, 503);
+    if (error instanceof ChatFailure) return json({ error: error.message }, error.status);
+    // Nunca registra a chave: só o tipo do erro.
+    console.error("[api/chat]", error instanceof Error ? error.name : "erro desconhecido");
+    return json({ error: "A IA não respondeu agora. Tenta de novo." }, 502);
   }
 }
 
 const json = (data: unknown, status = 200): Response =>
-  new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8" } });
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff" },
+  });

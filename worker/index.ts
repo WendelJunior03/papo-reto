@@ -9,6 +9,7 @@ import { d1Db, type D1Database } from "../server/db";
 interface Env {
   DB: D1Database;
   ANTHROPIC_API_KEY?: string;
+  OPENAI_API_KEY?: string;
   SIGNUP_CODE?: string;
   AI_DAILY_LIMIT?: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
@@ -47,6 +48,7 @@ export default {
       db: d1Db(env.DB),
       signupCode: env.SIGNUP_CODE,
       anthropicKey: env.ANTHROPIC_API_KEY,
+      openaiKey: env.OPENAI_API_KEY,
       aiDailyLimit: env.AI_DAILY_LIMIT ? Number(env.AI_DAILY_LIMIT) : undefined,
     });
     return res ?? env.ASSETS.fetch(req);

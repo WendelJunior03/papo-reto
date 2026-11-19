@@ -3,6 +3,37 @@ import { esc } from "../lib/html";
 import { canListen } from "../lib/listen";
 import { ui } from "../icons";
 import { ensureAi, type AppState } from "../state";
+import { DEFAULT_MODEL, maskKey, PROVIDER_NAME, providerFor } from "../lib/provider";
+
+/** Cartão pra colar a própria chave da OpenAI ou da Anthropic. */
+function keyCard(s: AppState): string {
+  const k = s.aiKey;
+  const provider = k ? providerFor(k.key) : null;
+  if (k && provider && !s.aiSettings.open) {
+    return `<div class="ai-key-line">
+      <span class="st ok">Sua chave</span>
+      <span>${PROVIDER_NAME[provider]} · <code>${esc(maskKey(k.key))}</code> · ${esc(k.model || DEFAULT_MODEL[provider])}</span>
+      <button class="link-btn" data-act="ai-key-edit">Trocar</button>
+    </div>`;
+  }
+  return `<form class="ai-key" data-form="ai-key" autocomplete="off">
+    <span class="eyebrow">Sua chave de IA</span>
+    <p>Cole a sua chave de API da <b>OpenAI</b> (começa com <code>sk-</code>) ou da <b>Anthropic</b> (<code>sk-ant-</code>). A conversa é cobrada na sua conta.</p>
+    <label class="field"><span>Chave</span>
+      <input id="ai-key-input" name="key" type="password" spellcheck="false" autocapitalize="off" placeholder="sk-..." value="${esc(k?.key ?? "")}"></label>
+    <label class="field"><span>Modelo <small>(opcional)</small></span>
+      <input id="ai-model-input" name="model" spellcheck="false" autocapitalize="off" placeholder="Padrão: ${DEFAULT_MODEL.openai} ou ${DEFAULT_MODEL.anthropic}" value="${esc(k?.model ?? "")}"></label>
+    ${s.aiSettings.error ? `<p class="dl-err">${esc(s.aiSettings.error)}</p>` : ""}
+    <div class="acts">
+      <button class="btn btn-am" type="submit">Salvar chave</button>
+      ${k ? `<button class="btn btn-ghost" type="button" data-act="ai-key-remove">Remover</button>` : ""}
+      ${k || s.serverAi ? `<button class="btn btn-ghost" type="button" data-act="ai-key-cancel">Cancelar</button>` : ""}
+    </div>
+    <p class="ai-key-help">Onde pegar: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>
+      ou <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.
+      A chave fica salva só neste aparelho e vai direto pra empresa de IA a cada mensagem — o Papo Reto não guarda.</p>
+  </form>`;
+}
 
 export function renderAi(s: AppState): string {
   const chat = ensureAi(s);
@@ -44,6 +75,7 @@ export function renderAi(s: AppState): string {
     .join("");
 
   const empty = !chat.messages.length && !chat.loading;
+  const needsKey = !s.aiKey && !s.serverAi;
 
   return `<div class="page"><section class="band"><div class="wrap">
     <div class="sec-head"><span class="eyebrow">Conversa livre · IA</span>
@@ -56,15 +88,18 @@ export function renderAi(s: AppState): string {
         <button class="btn btn-ghost btn-ic" data-act="ai-next" aria-label="Próxima situação">${ui.arrow}</button>
       </div>
     </div>
+    ${needsKey || s.aiSettings.open || s.aiKey ? keyCard(s) : `<div class="ai-key-line"><span class="st tr">Chave do app</span><span>Usando a IA do app (limite diário).</span><button class="link-btn" data-act="ai-key-edit">Usar minha chave</button></div>`}
     ${
-      empty
+      needsKey
+        ? ""
+        : empty
         ? `<div class="ai-empty"><p>A IA começa a conversa. Responda como se fosse de verdade — errar faz parte.</p>
             <button class="btn btn-am btn-lg" data-act="ai-start">Começar conversa</button></div>`
         : `<div class="dl-chat">${bubbles}${chat.loading ? `<div class="dl-row"><div class="dl-bub typing"><i></i><i></i><i></i></div></div>` : ""}</div>`
     }
     ${chat.error ? `<p class="dl-err">${esc(chat.error)}</p>` : ""}
     ${
-      empty
+      empty || needsKey
         ? ""
         : `<form class="ai-compose" data-form="ai-send">
             <textarea id="ai-input" rows="1" lang="en" placeholder="Escreva em inglês…" ${chat.loading ? "disabled" : ""}>${esc(chat.draft)}</textarea>

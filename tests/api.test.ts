@@ -106,14 +106,32 @@ describe("proteções", () => {
     ))!;
     expect(res.status).toBe(403);
   });
-  test("limita mensagens pra IA por dia", async () => {
-    cfg.aiDailyLimit = 2;
+  test("sem chave nenhuma, pede a chave do usuário", async () => {
     await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
-    const msg = { scenario: { title: "t", scene: "s", phrases: [] }, messages: [] };
-    await call("POST", "chat", msg);
-    await call("POST", "chat", msg);
-    const third = await call("POST", "chat", msg);
-    expect(third.status).toBe(429);
+    const r = await call("POST", "chat", { scenario: { title: "t", scene: "s", phrases: [] }, messages: [] });
+    expect(r.status).toBe(403);
+    expect(r.data.needsKey).toBe(true);
+  });
+  test("chave do usuário que não é de IA é recusada", async () => {
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    const res = (await handleApi(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie, "x-ai-key": "minha-senha" },
+        body: JSON.stringify({ scenario: { title: "t", scene: "s", phrases: [] }, messages: [] }),
+      }),
+      cfg,
+    ))!;
+    expect(res.status).toBe(400);
+  });
+  test("limita mensagens pra IA por dia (com a chave do servidor)", async () => {
+    // Limite já estourado: bloqueia antes de qualquer chamada à IA (o teste não sai pra internet).
+    cfg.aiDailyLimit = 0;
+    cfg.anthropicKey = "sk-ant-servidor";
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    const r = await call("POST", "chat", { scenario: { title: "t", scene: "s", phrases: [] }, messages: [] });
+    expect(r.status).toBe(429);
+    expect(String(r.data.error)).toContain("limite");
   });
 });
 
