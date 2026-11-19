@@ -46,12 +46,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (req.mode === "navigate") {
-    // Qualquer rota abre o app guardado; tenta a rede só se não houver cópia.
-    event.respondWith(caches.match("./index.html").then((r) => r ?? fetch(req)));
+    // Qualquer rota abre o app guardado ("./"); tenta a rede só se não houver cópia.
+    event.respondWith(caches.match("./").then((r) => (r ? unredirected(r) : fetch(req))));
     return;
   }
   event.respondWith(fromCache(req));
 });
+
+/**
+ * O navegador recusa abrir uma página vinda de uma resposta que foi redirecionada
+ * (ex.: o Cloudflare manda /index.html → /). Recria a resposta sem a marca de redirecionamento.
+ */
+function unredirected(res: Response): Response {
+  if (!res.redirected) return res;
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
 
 /** O app avisa quais áudios o pacote aberto usa; eles são baixados em segundo plano. */
 self.addEventListener("message", (event) => {
@@ -91,7 +100,7 @@ async function audio(req: Request): Promise<Response> {
  */
 async function fromCache(req: Request): Promise<Response> {
   const cached = await caches.match(req.url);
-  return cached ? withRange(req, cached) : fetch(req);
+  return cached ? withRange(req, unredirected(cached)) : fetch(req);
 }
 
 async function withRange(req: Request, cached: Response): Promise<Response> {

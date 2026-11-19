@@ -137,12 +137,14 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
   if (online) savePix(pix);
   document.body.classList.remove("auth");
   s = createState(user, new Date(), undefined, serverAi, pix);
+  s.canInstall = installEvent !== null;
   render();
   if (!online) return;
   try {
     const remote = await api.getProgress();
     const merged = mergeData(load(user), remote.data);
     s = createState(user, new Date(), merged, serverAi, pix);
+    s.canInstall = installEvent !== null;
     save(user, merged);
     const days = streakDays(s);
     if (days >= 7) nudgeSupport(s, `${days} dias seguidos estudando!`);
@@ -195,6 +197,7 @@ function render(): void {
 /** Pede ao service worker pra guardar os áudios do pacote aberto (fica disponível offline). */
 let cachedPack = -1;
 function cachePackAudio(): void {
+  if (!s) return; // ainda na tela de login
   const sw = navigator.serviceWorker?.controller;
   if (!sw || cachedPack === s.packIndex) return;
   cachedPack = s.packIndex;
@@ -583,11 +586,15 @@ let installEvent: BeforeInstallPromptEvent | null = null;
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   installEvent = e as BeforeInstallPromptEvent;
-  s.canInstall = true;
-  render();
+  // Pode chegar antes do login terminar; o start() liga o botão depois.
+  if (s) {
+    s.canInstall = true;
+    render();
+  }
 });
 window.addEventListener("appinstalled", () => {
   installEvent = null;
+  if (!s) return;
   s.canInstall = false;
   render();
   toast("App instalado", true);

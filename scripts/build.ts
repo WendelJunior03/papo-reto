@@ -46,7 +46,8 @@ async function listFiles(dir: string): Promise<string[]> {
 
 const files = (await listFiles(dist))
   .map((f) => relative(dist, f).split("\\").join("/"))
-  .filter((f) => !f.endsWith(".map") && f !== "sw.js" && f !== "_headers" && !f.startsWith("audio/"));
+  .filter((f) => !f.endsWith(".map") && f !== "sw.js" && f !== "_headers" && f !== "index.html" && !f.startsWith("audio/"));
+// index.html entra como "./": no Cloudflare, /index.html redireciona pra /, e página redirecionada no cache não abre.
 // Os áudios (mais de mil) não entram na instalação: são guardados conforme cada pacote é aberto.
 const precache = ["./", ...files.map((f) => `./${f}`)];
 
