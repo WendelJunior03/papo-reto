@@ -35,6 +35,7 @@ const texts = new Map<string, string>();
 for (const p of allPhrases) {
   texts.set(audioFile(p.en), p.en);
   for (const ex of p.examples ?? []) texts.set(audioFile(ex.en), ex.en);
+  if (p.flip) texts.set(audioFile(p.flip.en), p.flip.en);
 }
 for (const pack of packs) for (const c of pack.chat) texts.set(audioFile(c.en), c.en);
 

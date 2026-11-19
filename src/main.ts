@@ -382,6 +382,15 @@ function aiMic(): void {
 const actions: Record<string, (el: HTMLElement) => void> = {
   say: (el) => play(findPhrase(el.dataset.id!)!.en),
   slow: (el) => play(findPhrase(el.dataset.id!)!.en, true),
+  flip: (el) => {
+    const id = el.dataset.id!;
+    s.openFlips.has(id) ? s.openFlips.delete(id) : s.openFlips.add(id);
+    render();
+  },
+  "say-flip": (el) => {
+    const f = findPhrase(el.dataset.id!)?.flip;
+    if (f) play(f.en);
+  },
   "say-ex": (el) => {
     const ex = findPhrase(el.dataset.id!)?.examples?.[Number(el.dataset.ex)];
     if (ex) play(ex.en);

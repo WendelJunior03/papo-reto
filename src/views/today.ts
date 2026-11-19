@@ -47,16 +47,31 @@ export function renderToday(s: AppState): string {
       const id = phraseId(pack, i);
       const kn = isKnown(s.data.progress[id]);
       const open = s.openTips.has(id);
+      const flipOpen = s.openFlips.has(id);
+      const f = p.flip;
       const [label, cls] = TAGS[p.tag];
       return `<article class="card ${kn ? "known" : ""}">
         <div class="card-top"><span class="n">${pad(i + 1)} / 05</span><span class="st ${cls}">${label}</span></div>
         <p class="en" lang="en">${highlight(p.en)}</p>
         <div class="ptl"><span class="mono">PT</span><p>${esc(p.pt)}</p></div>
         ${open ? `<div class="suggest"><span class="mono">Como o nativo usa</span><div>${p.note}</div>${examples(id, p.examples)}</div>` : ""}
+        ${
+          f && flipOpen
+            ? `<div class="flip-box">
+                <span class="mono">${f.kind === "question" ? "Perguntando pra alguém" : "Respondendo"}</span>
+                <div class="flip-row">
+                  <button class="ex-play" data-act="say-flip" data-id="${id}" aria-label="Ouvir">${ui.play}</button>
+                  <div><p class="flip-en" lang="en">${highlight(f.en)}</p><p class="flip-pt">${esc(f.pt)}</p></div>
+                </div>
+                <p class="flip-how">${ui.flip}<span>${esc(f.how)}</span></p>
+              </div>`
+            : ""
+        }
         <div class="acts">
           <button class="btn btn-ultra" data-act="say" data-id="${id}">${ui.play}Ouvir</button>
           <button class="btn btn-ghost btn-ic" data-act="slow" data-id="${id}" aria-label="Ouvir devagar" title="Devagar">${ui.slow}</button>
           <button class="btn btn-ghost" data-act="tip" data-id="${id}" aria-expanded="${open}">${ui.tip}Dica e exemplos</button>
+          ${f ? `<button class="btn btn-ghost" data-act="flip" data-id="${id}" aria-expanded="${flipOpen}">${ui.flip}${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}</button>` : ""}
           <button class="btn ${kn ? "btn-am" : "btn-ghost"} push" data-act="known" data-id="${id}" aria-pressed="${kn}">${ui.tick}${kn ? "Já sei" : "Sei essa"}</button>
         </div>
       </article>`;

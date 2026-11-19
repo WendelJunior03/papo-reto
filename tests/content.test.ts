@@ -45,6 +45,18 @@ describe("conteúdo", () => {
     }
   });
 
+  test("cada frase tem a versão virada (pergunta ou resposta), com no máximo um trecho grifado", () => {
+    for (const p of allPhrases) {
+      const f = p.flip;
+      expect({ id: p.id, has: !!f }).toEqual({ id: p.id, has: true });
+      if (!f) continue;
+      expect(["question", "answer"]).toContain(f.kind);
+      expect({ id: p.id, chunks: chunk(f.en).length <= 1, en: f.en.length > 0, pt: f.pt.length > 0 }).toEqual({ id: p.id, chunks: true, en: true, pt: true });
+      expect({ id: p.id, how: f.how.length > 0 && f.how.length <= 110 }).toEqual({ id: p.id, how: true });
+      if (f.kind === "question") expect({ id: p.id, q: f.en.trim().endsWith("?") }).toEqual({ id: p.id, q: true });
+    }
+  });
+
   test("tem conteúdo pra pelo menos um mês", () => {
     expect(packs.length).toBeGreaterThanOrEqual(30);
   });
@@ -52,7 +64,7 @@ describe("conteúdo", () => {
 
 test("toda frase e fala de cena tem áudio gravado (rode `bun run audio`)", () => {
   const texts = [
-    ...allPhrases.flatMap((p) => [p.en, ...(p.examples ?? []).map((e) => e.en)]),
+    ...allPhrases.flatMap((p) => [p.en, ...(p.examples ?? []).map((e) => e.en), ...(p.flip ? [p.flip.en] : [])]),
     ...packs.flatMap((p) => p.chat.map((c) => c.en)),
   ];
   const missing = texts.filter((t) => !existsSync(join(import.meta.dir, "../public", audioFile(t))));

@@ -424,3 +424,12 @@ body.sheet-open{overflow:hidden}
 .support-card.thanks{background:var(--surface);background-image:none;color:var(--ink);border:1px solid var(--n200)}
 .support-card.thanks .eyebrow{color:var(--n600)}
 .support-card.thanks p{color:var(--n700)}
+
+/* frase virada (pergunta/resposta) */
+.flip-box{border-radius:12px;background:var(--am-soft);padding:12px 14px;display:grid;gap:8px}
+.flip-box .mono{color:var(--atn-tx)}
+.flip-row{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+.flip-en{margin:0;font-size:19px;font-weight:600;letter-spacing:-.02em;line-height:1.25}
+.flip-pt{margin:2px 0 0;font-size:14.5px;color:var(--n700)}
+.flip-how{margin:0;display:flex;gap:8px;align-items:flex-start;font-size:13.5px;color:var(--n700)}
+.flip-how svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--atn-tx)}

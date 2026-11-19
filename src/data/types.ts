@@ -17,6 +17,17 @@ export interface Phrase {
   note: string;
   /** Dois outros exemplos com a mesma expressão, em contextos diferentes. */
   examples?: [Example, Example];
+  /** A frase virada: afirmação → pergunta pra outra pessoa; pergunta → resposta natural. */
+  flip?: Flip;
+}
+
+export interface Flip {
+  kind: "question" | "answer";
+  /** Inglês, com a mesma expressão entre [colchetes] quando ela continuar na frase. */
+  en: string;
+  pt: string;
+  /** O que mudou, em uma frase curta em português (ex.: "I'm vai pra frente e vira Are you"). */
+  how: string;
 }
 
 export interface Example {

@@ -21,8 +21,8 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 
 ## Como funciona
 
-- **60 situações · 300 frases · 600 exemplos · ~1.100 áudios.**
-- **Hoje** — um pacote por dia (o primeiro dia de uso abre o pacote 1). Cada frase tem o trecho nativo grifado, tradução, dica com 2 exemplos extras (com áudio), áudio normal e devagar, e "Sei essa".
+- **60 situações · 300 frases · 600 exemplos · 300 perguntas/respostas · ~1.400 áudios.**
+- **Hoje** — um pacote por dia (o primeiro dia de uso abre o pacote 1). Cada frase tem o trecho nativo grifado, tradução, dica com 2 exemplos extras (com áudio), **"Virar pergunta"** (ou "Ver resposta", quando a frase já é pergunta) mostrando a frase transformada e o que mudou na gramática, áudio normal e devagar, e "Sei essa".
 - **Na vida real** — mini-diálogo com as frases do pacote; a tradução fica escondida até pedir.
 - **Diálogo** — a cena do pacote, turno a turno: a outra pessoa fala (com áudio), você responde **em voz alta**. O reconhecimento de voz do navegador transcreve, o app compara com a fala certa (tolerante a contrações e pontuação) e marca o que faltou. Sem reconhecimento de voz, uma caixa de texto aceita o ditado do teclado. A melhor nota de cada cena fica salva.
 - **IA** — conversa livre com um nativo no papel da situação, usando a chave de IA da própria pessoa (OpenAI ou Anthropic). Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.

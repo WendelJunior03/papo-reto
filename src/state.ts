@@ -62,6 +62,8 @@ export interface AppState {
   packIndex: number;
   data: SavedData;
   openTips: Set<string>;
+  /** Frases com a versão "virada" (pergunta/resposta) aberta. */
+  openFlips: Set<string>;
   showChatPt: boolean;
   practice: Practice | null;
   dialogue: Dialogue | null;
@@ -102,6 +104,7 @@ export function createState(
     packIndex: todayIndex,
     data,
     openTips: new Set(),
+    openFlips: new Set(),
     showChatPt: false,
     practice: null,
     dialogue: null,
@@ -171,6 +174,7 @@ export function toggleKnown(s: AppState, id: string): boolean {
 export function goToPack(s: AppState, index: number): void {
   s.packIndex = ((index % packs.length) + packs.length) % packs.length;
   s.openTips.clear();
+  s.openFlips.clear();
 }
 
 export function startPractice(s: AppState, mode: PracticeMode = s.practice?.mode ?? "falar"): Practice {
