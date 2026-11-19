@@ -3,6 +3,7 @@ import { esc, plain } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import { packIcon } from "../icons";
 import { knownInPack, type AppState } from "../state";
+import { supportCard } from "./support";
 
 export function renderSituations(s: AppState): string {
   const total = packs.reduce((n, p) => n + p.phrases.length, 0);
@@ -26,6 +27,7 @@ export function renderSituations(s: AppState): string {
       <h2>Escolha o momento <span class="mark">do seu dia.</span></h2>
       <p>Cada situação tem cinco frases e uma cena real. O app abre um pacote novo por dia, mas você pode pular pra qualquer um.</p></div>
     <div class="grid">${tiles}</div>
+    ${supportCard(s)}
     <div class="account">
       <span class="avatar">${esc(s.user.slice(0, 1).toUpperCase())}</span>
       <div><span class="mono">Sua conta</span><b>${esc(s.user)}</b><small>Progresso salvo na conta — entre em qualquer aparelho.</small></div>

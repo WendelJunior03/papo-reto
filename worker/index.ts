@@ -12,6 +12,9 @@ interface Env {
   OPENAI_API_KEY?: string;
   SIGNUP_CODE?: string;
   AI_DAILY_LIMIT?: string;
+  PIX_KEY?: string;
+  PIX_NAME?: string;
+  PIX_CITY?: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -49,6 +52,7 @@ export default {
       signupCode: env.SIGNUP_CODE,
       anthropicKey: env.ANTHROPIC_API_KEY,
       openaiKey: env.OPENAI_API_KEY,
+      pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,
       aiDailyLimit: env.AI_DAILY_LIMIT ? Number(env.AI_DAILY_LIMIT) : undefined,
     });
     return res ?? env.ASSETS.fetch(req);

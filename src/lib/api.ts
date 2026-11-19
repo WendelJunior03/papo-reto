@@ -1,5 +1,6 @@
 /** Chamadas ao servidor do app (login e sincronização do progresso). */
 import type { SavedData } from "./storage";
+import type { PixConfig } from "./pix";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -25,7 +26,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
-  me: () => call<{ username: string; serverAi: boolean }>("GET", "me"),
+  me: () => call<{ username: string; serverAi: boolean; pix: PixConfig | null }>("GET", "me"),
   login: (username: string, password: string) => call<{ username: string }>("POST", "auth/login", { username, password }),
   signup: (username: string, password: string, code: string) =>
     call<{ username: string }>("POST", "auth/signup", { username, password, code }),

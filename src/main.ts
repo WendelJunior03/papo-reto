@@ -13,11 +13,13 @@ import {
   answer, createState, currentPack, ensurePractice, goToPack, knownCount, knownInPack, persist,
   startPractice, streakDays, toggleKnown, type PracticeMode, type Tab,
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
-  setPersistListener, type AppState,
+  setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore,
 } from "./state";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
-import { lastUser, load, save, saveAiKey, setLastUser } from "./lib/storage";
+import { lastUser, load, loadPix, save, saveAiKey, savePix, setLastUser } from "./lib/storage";
+import { pixPayload, type PixConfig } from "./lib/pix";
+import { supportNudge, supportSheet } from "./views/support";
 import { providerFor } from "./lib/provider";
 import { renderAuth, type AuthView } from "./views/auth";
 import { renderDialogue } from "./views/dialogue";
@@ -31,6 +33,25 @@ const app = document.getElementById("app")!;
 const stats = document.getElementById("stats")!;
 const toastEl = document.getElementById("toast")!;
 const installBtn = document.getElementById("install") as HTMLButtonElement;
+const sheet = document.getElementById("sheet")!;
+
+/** Copia pro clipboard; se o navegador não deixar, seleciona o texto pra copiar na mão. */
+async function copy(text: string, ok: string, fallbackId?: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(ok, true);
+  } catch {
+    const el = fallbackId ? (document.getElementById(fallbackId) as HTMLInputElement | null) : null;
+    el?.select();
+    toast("Selecionei o código — copie com segurar e Copiar");
+  }
+}
+
+/** Lembrete de apoio ao cruzar 50, 100, 150… frases dominadas. */
+function checkKnownMilestone(before: number): void {
+  const after = knownCount(s);
+  if (Math.floor(after / 50) > Math.floor(before / 50)) nudgeSupport(s, `Você já domina ${Math.floor(after / 50) * 50} frases!`);
+}
 
 /* ---------- login ---------- */
 const auth: AuthView = { mode: "login", error: null, busy: false, username: "" };
@@ -61,8 +82,8 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         ? await api.signup(username, password, String(f.get("code") ?? ""))
         : await api.login(username, password);
     auth.busy = false;
-    const me = await api.me().catch(() => ({ serverAi: false }));
-    await start(res.username, true, me.serverAi);
+    const me = await api.me().catch(() => ({ serverAi: false, pix: null }));
+    await start(res.username, true, me.serverAi, me.pix);
   } catch (e) {
     auth.busy = false;
     auth.error = e instanceof ApiError ? e.message : "Não foi possível entrar.";
@@ -111,17 +132,20 @@ window.addEventListener("online", () => {
 });
 
 /** Entra no app como `user`: junta o progresso do aparelho com o da conta e desenha. */
-async function start(user: string, online = true, serverAi = false): Promise<void> {
+async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix()): Promise<void> {
   setLastUser(user);
+  if (online) savePix(pix);
   document.body.classList.remove("auth");
-  s = createState(user, new Date(), undefined, serverAi);
+  s = createState(user, new Date(), undefined, serverAi, pix);
   render();
   if (!online) return;
   try {
     const remote = await api.getProgress();
     const merged = mergeData(load(user), remote.data);
-    s = createState(user, new Date(), merged, serverAi);
+    s = createState(user, new Date(), merged, serverAi, pix);
     save(user, merged);
+    const days = streakDays(s);
+    if (days >= 7) nudgeSupport(s, `${days} dias seguidos estudando!`);
     render();
     await pushNow();
   } catch {
@@ -132,7 +156,7 @@ async function start(user: string, online = true, serverAi = false): Promise<voi
 async function boot(): Promise<void> {
   try {
     const me = await api.me();
-    await start(me.username, true, me.serverAi);
+    await start(me.username, true, me.serverAi, me.pix);
   } catch (e) {
     const cached = lastUser();
     if (e instanceof ApiError && e.status === 0 && cached) {
@@ -163,6 +187,8 @@ function render(): void {
   installBtn.hidden = !s.canInstall;
   const cv = document.getElementById("dots");
   if (cv instanceof HTMLCanvasElement) drawDots(cv, s.packIndex);
+  sheet.innerHTML = supportSheet(s) + supportNudge(s);
+  document.body.classList.toggle("sheet-open", s.support.open);
   cachePackAudio();
 }
 
@@ -356,7 +382,9 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     render();
   },
   known: (el) => {
+    const before = knownCount(s);
     if (toggleKnown(s, el.dataset.id!)) {
+      checkKnownMilestone(before);
       toast(knownInPack(s, s.packIndex) === 5 ? "Pacote completo" : "Anotado. Volta na revisão", true);
     }
     render();
@@ -385,6 +413,9 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   },
   "dl-next": () => {
     const revealed = advanceDialogue(s);
+    if (s.dialogue && dialogueDone(s.dialogue) && dialogueScore(s.dialogue) >= 0.9) {
+      nudgeSupport(s, "Diálogo mandado com mais de 90%!");
+    }
     render();
     scrollToEnd();
     playLines(revealed);
@@ -397,6 +428,15 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "dl-restart": () => { const revealed = startDialogue(s); render(); window.scrollTo(0, 0); playLines(revealed); },
 
   "ai-start": () => void sendToAi(""),
+
+  "support-open": () => { s.support = { open: true, amount: 0, nudge: null }; render(); },
+  "support-close": () => { s.support.open = false; render(); },
+  "support-later": () => { s.support.nudge = null; render(); },
+  "support-amount": (el) => { s.support.amount = Number(el.dataset.amount); render(); },
+  "support-copy": () => {
+    if (s.pix) void copy(pixPayload(s.pix, s.support.amount || undefined), "Código PIX copiado — cole no app do banco", "pix-code");
+  },
+  "support-copy-key": () => { if (s.pix) void copy(s.pix.key, "Chave PIX copiada"); },
   "ai-key-edit": () => { s.aiSettings = { open: true, error: null }; render(); },
   "ai-key-cancel": () => { s.aiSettings = { open: false, error: null }; render(); },
   "ai-key-remove": () => {
@@ -456,7 +496,9 @@ function playCurrent(slow = false): void {
 }
 
 function next(hit: boolean): void {
+  const before = knownCount(s);
   answer(s, hit);
+  checkKnownMilestone(before);
   render();
   if (s.practice?.mode === "ouvir") playCurrent();
 }
@@ -504,6 +546,10 @@ document.addEventListener("input", (e) => {
 
 document.addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
+  if (e.key === "Escape" && s?.support.open) {
+    s.support.open = false;
+    return render();
+  }
   // Enter envia; Shift+Enter quebra linha.
   if (el.id === "ai-input" && e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();

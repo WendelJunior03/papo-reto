@@ -4,6 +4,8 @@ import { packIndexFor, shuffle, streak } from "./lib/schedule";
 import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
 import { load, loadAiKey, save, type AiKey, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
+import type { PixConfig } from "./lib/pix";
+import { daysBetween } from "./lib/dates";
 
 export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes";
 export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "treino", "situacoes"];
@@ -71,12 +73,21 @@ export interface AppState {
   aiKey: AiKey | null;
   serverAi: boolean;
   aiSettings: { open: boolean; error: string | null };
+  /** PIX do projeto (null = apoio escondido), janela aberta, valor escolhido e lembrete atual. */
+  pix: PixConfig | null;
+  support: { open: boolean; amount: number; nudge: string | null };
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
 const REVIEW_LIMIT = 10;
 
-export function createState(user: string, now = new Date(), initial?: SavedData, serverAi = false): AppState {
+export function createState(
+  user: string,
+  now = new Date(),
+  initial?: SavedData,
+  serverAi = false,
+  pix: PixConfig | null = null,
+): AppState {
   const data = initial ?? load(user);
   const today = dateKey(now);
   data.start ??= today;
@@ -101,6 +112,8 @@ export function createState(user: string, now = new Date(), initial?: SavedData,
     aiKey: loadAiKey(user),
     serverAi,
     aiSettings: { open: false, error: null },
+    pix,
+    support: { open: false, amount: 0, nudge: null },
   };
 }
 
@@ -242,4 +255,17 @@ export function ensureAi(s: AppState): AiChat {
     s.ai = { packIndex: s.packIndex, messages: [], loading: false, error: null, draft: "", openPt: new Set() };
   }
   return s.ai;
+}
+
+/* ---------- apoio ao projeto ---------- */
+const NUDGE_EVERY_DAYS = 30;
+
+/** Mostra o lembrete de apoio numa conquista, no máximo uma vez a cada 30 dias. */
+export function nudgeSupport(s: AppState, message: string): void {
+  if (!s.pix || s.support.nudge || s.support.open) return;
+  const last = s.data.supportPromptAt;
+  if (last && daysBetween(last, s.today) < NUDGE_EVERY_DAYS) return;
+  s.support.nudge = message;
+  s.data.supportPromptAt = s.today;
+  persist(s);
 }

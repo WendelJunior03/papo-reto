@@ -13,6 +13,8 @@ export interface SavedData {
   reminderAdded: boolean;
   /** Melhor nota (0–1) no diálogo guiado de cada pacote. */
   dialogues: Record<string, { best: number; date: DateKey }>;
+  /** Última vez que o app pediu apoio (no máximo uma vez a cada 30 dias). */
+  supportPromptAt: DateKey | null;
 }
 
 const PREFIX = "papo-reto:v1";
@@ -21,7 +23,7 @@ const MAX_VISITS = 400;
 
 export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
-  reminderTime: "20:00", reminderAdded: false, dialogues: {},
+  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null,
 });
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */
@@ -101,5 +103,24 @@ export function saveAiKey(user: string, value: AiKey | null): void {
     else localStorage.removeItem(aiKeyFor(user));
   } catch {
     // sem armazenamento: a chave vale só até fechar o app
+  }
+}
+
+/** PIX do projeto, guardado pra mostrar o apoio também offline. */
+const PIX = "papo-reto:pix";
+export function loadPix(): import("./pix").PixConfig | null {
+  try {
+    const raw = localStorage.getItem(PIX);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+export function savePix(pix: import("./pix").PixConfig | null): void {
+  try {
+    if (pix) localStorage.setItem(PIX, JSON.stringify(pix));
+    else localStorage.removeItem(PIX);
+  } catch {
+    // ignora
   }
 }

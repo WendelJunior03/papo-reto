@@ -25,6 +25,8 @@ export interface ApiConfig {
   /** Chaves do servidor (opcionais). Quem colocar a própria chave no app usa a dela. */
   anthropicKey?: string;
   openaiKey?: string;
+  /** PIX pra doações (chave, nome e cidade do recebedor). Sem chave, o app não mostra o apoio. */
+  pix?: { key: string; name: string; city: string };
   /** Mensagens pra IA por usuário por dia usando a chave do servidor (padrão 60). */
   aiDailyLimit?: number;
 }
@@ -152,7 +154,11 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
 
   switch (route) {
     case "GET /api/me":
-      return json({ username: user.username, serverAi: !!(cfg.anthropicKey || cfg.openaiKey) });
+      return json({
+        username: user.username,
+        serverAi: !!(cfg.anthropicKey || cfg.openaiKey),
+        pix: cfg.pix?.key ? cfg.pix : null,
+      });
 
     case "GET /api/progress": {
       const row = await db.first<{ progress: string | null; progress_at: string | null }>(

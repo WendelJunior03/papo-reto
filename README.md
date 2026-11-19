@@ -31,6 +31,12 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Situações** — todos os pacotes com o progresso de cada um.
 - Progresso salvo no aparelho (`localStorage`). Áudio gravado (public/audio, gerado com as vozes do macOS), guardado offline conforme cada pacote é aberto; a voz do celular fica de reserva.
 
+## Apoio por PIX
+
+Cartão "Apoie o projeto" na aba Situações e um lembrete gentil em conquistas (7 dias seguidos, a cada 50 frases dominadas, diálogo com 90%+) — no máximo uma vez a cada 30 dias, nunca no meio da lição. A janela gera o **PIX copia e cola** (BR Code do Banco Central, com CRC16) e o **QR Code**, com valor livre ou sugerido (R$ 5, 10, 20).
+
+Configuração: `PIX_KEY`, `PIX_NAME` e `PIX_CITY` no `.env` (local) ou `bunx wrangler secret put PIX_KEY` etc. (produção). Sem `PIX_KEY`, o apoio fica escondido. Use **chave aleatória** pra não expor CPF/telefone.
+
 ## Contas e banco de dados
 
 O app exige login (usuário e senha). Banco **SQLite**: no Mac é o arquivo `data/papo.db` (criado sozinho), em produção é o **Cloudflare D1** — mesmo SQL (`migrations/0001_init.sql`).
