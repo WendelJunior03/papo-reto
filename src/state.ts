@@ -2,13 +2,13 @@ import { allPhrases, packs, phraseId } from "./data";
 import { dateKey, type DateKey } from "./lib/dates";
 import { packIndexFor, shuffle, streak } from "./lib/schedule";
 import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
-import { load, loadAiKey, save, type AiKey, type SavedData } from "./lib/storage";
+import { emptyDay, load, loadAiKey, save, type AiKey, type DayStats, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
 import { daysBetween } from "./lib/dates";
 
-export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes";
-export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "treino", "situacoes"];
+export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes" | "evolucao";
+export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "treino", "situacoes", "evolucao"];
 export type PracticeMode = "falar" | "ouvir";
 
 export interface Practice {
@@ -123,7 +123,15 @@ export const setPersistListener = (fn: (s: AppState) => void): void => {
   onPersist = fn;
 };
 
+/** Soma no histórico de hoje (e atualiza a foto de frases dominadas). */
+export function track(s: AppState, change: Partial<DayStats>): void {
+  const day = (s.data.history[s.today] ??= emptyDay());
+  for (const [k, v] of Object.entries(change) as [keyof DayStats, number][]) day[k] += v;
+}
+
 export function persist(s: AppState): void {
+  const day = (s.data.history[s.today] ??= emptyDay());
+  day.known = knownCount(s);
   save(s.user, s.data);
   onPersist?.(s);
 }
@@ -154,6 +162,7 @@ export function toggleKnown(s: AppState, id: string): boolean {
   if (isKnown(p[id])) {
     delete p[id];
   } else {
+    if (!p[id]?.at) track(s, { learned: 1 });
     p[id] = markKnown(p[id], s.today);
   }
   persist(s);
@@ -179,7 +188,9 @@ export function answer(s: AppState, hit: boolean): void {
   const pr = s.practice;
   const id = pr?.deck[pr.pos];
   if (!pr || !id) return;
+  const firstTime = hit && !s.data.progress[id]?.at;
   s.data.progress[id] = grade(s.data.progress[id], hit, s.today);
+  track(s, { reviews: 1, hits: hit ? 1 : 0, learned: firstTime ? 1 : 0 });
   if (hit) pr.score++;
   pr.pos++;
   pr.revealed = false;
@@ -217,6 +228,10 @@ export function recordTurn(s: AppState, turn: DialogueTurn): void {
   if (!d || i === null || i === undefined) return;
   d.turns[i] = turn;
   d.error = null;
+  if (turn.said !== "(pulou)") {
+    track(s, { spoken: 1, spokenSum: turn.result.score });
+    persist(s);
+  }
 }
 
 /** Avança depois da fala do aluno; devolve as falas da outra pessoa que apareceram. */

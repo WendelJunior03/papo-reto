@@ -21,14 +21,14 @@ describe("repetição espaçada", () => {
   const today = "2026-11-19";
   test("'Sei essa' entra na caixa 1 e volta amanhã", () => {
     const c = markKnown(undefined, today);
-    expect(c).toEqual({ box: 1, due: "2026-11-20" });
+    expect(c).toEqual({ box: 1, due: "2026-11-20", at: "2026-11-19" });
     expect(isKnown(c)).toBe(true);
   });
   test("acertos espaçam cada vez mais", () => {
     let c = grade(undefined, true, today);
     expect(c.box).toBe(1);
     c = grade(c, true, today);
-    expect(c).toEqual({ box: 2, due: addDays(today, INTERVALS[2]) });
+    expect(c).toEqual({ box: 2, due: addDays(today, INTERVALS[2]), at: today });
   });
   test("caixa não passa do máximo", () => {
     const c = grade({ box: MAX_BOX, due: today }, true, today);

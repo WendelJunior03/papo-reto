@@ -7,6 +7,8 @@ import { addDays, type DateKey } from "./dates";
 export interface CardState {
   box: number;
   due: DateKey;
+  /** Primeiro dia em que a frase foi dominada (pra "Sua coleção"). */
+  at?: DateKey;
 }
 
 export type Progress = Record<string, CardState>;
@@ -24,14 +26,14 @@ export const isDue = (card: CardState | undefined, today: DateKey): boolean =>
 /** "Sei essa" na tela do dia: entra pelo menos na caixa 1. */
 export function markKnown(card: CardState | undefined, today: DateKey): CardState {
   const box = Math.max(card?.box ?? 0, 1);
-  return { box, due: addDays(today, intervalFor(box)) };
+  return { box, due: addDays(today, intervalFor(box)), at: card?.at ?? today };
 }
 
 /** Resultado de um card no treino. */
 export function grade(card: CardState | undefined, hit: boolean, today: DateKey): CardState {
-  if (!hit) return { box: 0, due: today };
+  if (!hit) return { box: 0, due: today, ...(card?.at ? { at: card.at } : {}) };
   const box = Math.min((card?.box ?? 0) + 1, MAX_BOX);
-  return { box, due: addDays(today, intervalFor(box)) };
+  return { box, due: addDays(today, intervalFor(box)), at: card?.at ?? today };
 }
 
 /** IDs que já passaram da data de revisão, mais atrasados primeiro. */

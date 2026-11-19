@@ -13,7 +13,7 @@ import {
   answer, createState, currentPack, ensurePractice, goToPack, knownCount, knownInPack, persist,
   startPractice, streakDays, toggleKnown, type PracticeMode, type Tab,
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
-  setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore,
+  setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track,
 } from "./state";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
@@ -24,6 +24,7 @@ import { providerFor } from "./lib/provider";
 import { renderAuth, type AuthView } from "./views/auth";
 import { renderDialogue } from "./views/dialogue";
 import { renderAi } from "./views/ai";
+import { renderEvolution } from "./views/evolution";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
 import { renderSituations } from "./views/situations";
@@ -174,14 +175,15 @@ async function boot(): Promise<void> {
 /* ---------- render ---------- */
 function render(): void {
   const days = streakDays(s);
-  stats.innerHTML = `<span class="st at" title="Dias seguidos">${days} ${days === 1 ? "dia" : "dias"}</span>
-    <span class="st ok" title="Frases que você já sabe">${knownCount(s)}</span>`;
+  stats.innerHTML = `<button class="stats-btn" data-act="goto-evolucao" aria-label="Ver sua evolução">
+    <span class="st at">${days} ${days === 1 ? "dia" : "dias"}</span><span class="st ok">${knownCount(s)}</span>${ui.chart}</button>`;
   if (s.tab === "dialogo") ensureDialogue(s);
   app.innerHTML =
     s.tab === "hoje" ? renderToday(s)
     : s.tab === "dialogo" ? renderDialogue(s)
     : s.tab === "ia" ? renderAi(s)
     : s.tab === "treino" ? renderPractice(s)
+    : s.tab === "evolucao" ? renderEvolution(s)
     : renderSituations(s);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
@@ -308,7 +310,11 @@ async function sendToAi(text: string): Promise<void> {
   const chat = ensureAi(s);
   const content = text.trim().slice(0, 600);
   if (chat.loading) return;
-  if (content) chat.messages.push({ role: "user", content });
+  if (content) {
+    chat.messages.push({ role: "user", content });
+    track(s, { ai: 1 });
+    persist(s);
+  }
   chat.draft = "";
   chat.loading = true;
   chat.error = null;
@@ -402,6 +408,8 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   pick: (el) => { goToPack(s, Number(el.dataset.pack)); setTab("hoje"); },
   logout: () => void logout(),
   "goto-dialogo": () => setTab("dialogo"),
+  "goto-evolucao": () => setTab("evolucao"),
+  "goto-hoje": () => setTab("hoje"),
   "goto-ia": () => setTab("ia"),
 
   "dl-play": (el) => play(packs[s.dialogue!.packIndex]!.chat[Number(el.dataset.line)]!.en),
@@ -505,6 +513,48 @@ function next(hit: boolean): void {
   render();
   if (s.practice?.mode === "ouvir") playCurrent();
 }
+
+/* ---------- detalhe dos gráficos (passar o mouse ou tocar) ---------- */
+function showTip(target: Element): void {
+  const chart = target.closest<HTMLElement>("[data-chart]");
+  const text = target.getAttribute("data-tip");
+  if (!chart || !text) return;
+  const tip = chart.querySelector<HTMLElement>(".tip")!;
+  tip.textContent = text;
+  tip.hidden = false;
+  const box = chart.getBoundingClientRect();
+  const r = target.getBoundingClientRect();
+  const cx = target.getAttribute("data-cx");
+  if (cx) {
+    // gráfico de linha: crosshair e ponto em foco
+    const svg = chart.querySelector("svg")!;
+    const cross = svg.querySelector(".cross")!;
+    const focus = svg.querySelector(".focus")!;
+    cross.setAttribute("x1", cx);
+    cross.setAttribute("x2", cx);
+    cross.setAttribute("visibility", "visible");
+    focus.setAttribute("cx", cx);
+    focus.setAttribute("cy", target.getAttribute("data-cy")!);
+    focus.setAttribute("visibility", "visible");
+  }
+  const left = Math.min(Math.max(r.left + r.width / 2 - box.left, 60), box.width - 60);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${r.top - box.top - 8}px`;
+}
+function hideTips(chart: Element | null): void {
+  if (!chart) return;
+  chart.querySelector<HTMLElement>(".tip")?.setAttribute("hidden", "");
+  chart.querySelectorAll(".cross,.focus").forEach((el) => el.setAttribute("visibility", "hidden"));
+}
+document.addEventListener("pointerover", (e) => {
+  const t = (e.target as Element).closest?.("[data-chart] [data-tip]");
+  if (t) showTip(t);
+});
+document.addEventListener("pointerout", (e) => {
+  const from = (e.target as Element).closest?.("[data-chart]");
+  const to = (e.relatedTarget as Element | null)?.closest?.("[data-chart]");
+  if (from && from !== to) hideTips(from);
+});
 
 document.addEventListener("submit", (e) => {
   const form = e.target as HTMLFormElement;

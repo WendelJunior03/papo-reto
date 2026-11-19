@@ -15,7 +15,26 @@ export interface SavedData {
   dialogues: Record<string, { best: number; date: DateKey }>;
   /** Última vez que o app pediu apoio (no máximo uma vez a cada 30 dias). */
   supportPromptAt: DateKey | null;
+  /** Histórico por dia, pra tela de evolução. */
+  history: Record<DateKey, DayStats>;
 }
+
+export interface DayStats {
+  /** Frases marcadas como "sei" ou acertadas pela primeira vez. */
+  learned: number;
+  /** Cards respondidos no treino e quantos acertou. */
+  reviews: number;
+  hits: number;
+  /** Falas no diálogo guiado e soma das notas (0–1), pra tirar a média. */
+  spoken: number;
+  spokenSum: number;
+  /** Mensagens enviadas pra IA. */
+  ai: number;
+  /** Total de frases dominadas no fim do dia (foto do dia). */
+  known: number;
+}
+
+export const emptyDay = (): DayStats => ({ learned: 0, reviews: 0, hits: 0, spoken: 0, spokenSum: 0, ai: 0, known: 0 });
 
 const PREFIX = "papo-reto:v1";
 const LAST_USER = "papo-reto:user";
@@ -23,7 +42,7 @@ const MAX_VISITS = 400;
 
 export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
-  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null,
+  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, history: {},
 });
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */

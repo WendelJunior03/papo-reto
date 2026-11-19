@@ -2,7 +2,7 @@
  * Junta o progresso deste aparelho com o salvo no servidor (ex.: usou no celular e no computador).
  * Regra: nada se perde — fica o mais avançado de cada lado.
  */
-import type { SavedData } from "./storage";
+import { emptyDay, type DayStats, type SavedData } from "./storage";
 import type { CardState } from "./srs";
 
 function betterCard(a: CardState | undefined, b: CardState | undefined): CardState | undefined {
@@ -26,6 +26,15 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     if (!r || d.best > r.best || (d.best === r.best && d.date > r.date)) dialogues[id] = d;
   }
 
+  // Histórico: por dia, fica o maior valor de cada número (o mesmo dia contado em dois aparelhos não soma duas vezes).
+  const history: SavedData["history"] = { ...remote.history };
+  for (const [day, l] of Object.entries(local.history ?? {})) {
+    const r = history[day] ?? emptyDay();
+    const merged = { ...emptyDay() };
+    for (const k of Object.keys(merged) as (keyof DayStats)[]) merged[k] = Math.max(l[k] ?? 0, r[k] ?? 0);
+    history[day] = merged;
+  }
+
   const starts = [local.start, remote.start].filter((x): x is string => !!x).sort();
   return {
     ...local,
@@ -34,6 +43,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     visits: [...new Set([...(remote.visits ?? []), ...local.visits])].sort(),
     progress,
     dialogues,
+    history,
     installHintDismissed: local.installHintDismissed || !!remote.installHintDismissed,
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
     supportPromptAt: [local.supportPromptAt, remote.supportPromptAt].filter((x): x is string => !!x).sort().at(-1) ?? null,

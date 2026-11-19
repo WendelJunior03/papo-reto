@@ -49,5 +49,7 @@ export const ui = {
   ear: svg(`<path d="M7 9a5 5 0 0 1 10 0c0 3-3 4-3 7a3 3 0 0 1-6 0"/><path d="M10 9a2 2 0 0 1 4 0"/>`),
   flip: svg(`<path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/>`),
   download: svg(`<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>`),
+  lock: svg(`<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>`),
+  chart: svg(`<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>`),
   share: svg(`<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>`),
 };

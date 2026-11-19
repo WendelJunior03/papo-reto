@@ -29,6 +29,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
+- **Sua evolução** (toque nos números do topo) — nível pelas frases dominadas, resumo da semana vs. a anterior, mapa de constância de 16 semanas, força da memória (caixas da repetição espaçada), gráficos de frases dominadas e da nota da fala nos diálogos, conquistas e a coleção das últimas expressões. Um histórico diário é salvo e sincronizado com a conta.
 - Progresso salvo no aparelho (`localStorage`). Áudio gravado (public/audio, gerado com as vozes do macOS), guardado offline conforme cada pacote é aberto; a voz do celular fica de reserva.
 
 ## Apoio por PIX

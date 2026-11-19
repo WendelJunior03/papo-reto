@@ -1,7 +1,7 @@
 import { packs, phraseId } from "../data";
 import { esc, plain } from "../lib/html";
 import { isKnown } from "../lib/srs";
-import { packIcon } from "../icons";
+import { packIcon, ui } from "../icons";
 import { knownInPack, type AppState } from "../state";
 import { supportCard } from "./support";
 
@@ -26,6 +26,7 @@ export function renderSituations(s: AppState): string {
     <div class="sec-head"><span class="eyebrow">${packs.length} situações · ${total} frases</span>
       <h2>Escolha o momento <span class="mark">do seu dia.</span></h2>
       <p>Cada situação tem cinco frases e uma cena real. O app abre um pacote novo por dia, mas você pode pular pra qualquer um.</p></div>
+    <button class="review evo-link" data-act="goto-evolucao"><span class="st ok">Sua evolução</span><span class="txt">Nível, constância, força da memória e conquistas.</span>${ui.arrow}</button>
     <div class="grid">${tiles}</div>
     ${supportCard(s)}
     <div class="account">
