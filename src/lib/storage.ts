@@ -1,0 +1,79 @@
+import type { Progress } from "./srs";
+import type { DateKey } from "./dates";
+
+/** Tudo que o app guarda por usuário (no aparelho e, com login, também no servidor). */
+export interface SavedData {
+  /** Dia em que a pessoa abriu o app pela primeira vez; ancora a rotação dos pacotes. */
+  start: DateKey | null;
+  visits: DateKey[];
+  progress: Progress;
+  installHintDismissed: boolean;
+  /** Horário do lembrete diário ("HH:MM") e se a pessoa já adicionou ao calendário. */
+  reminderTime: string;
+  reminderAdded: boolean;
+  /** Melhor nota (0–1) no diálogo guiado de cada pacote. */
+  dialogues: Record<string, { best: number; date: DateKey }>;
+}
+
+const PREFIX = "papo-reto:v1";
+const LAST_USER = "papo-reto:user";
+const MAX_VISITS = 400;
+
+export const emptyData = (): SavedData => ({
+  start: null, visits: [], progress: {}, installHintDismissed: false,
+  reminderTime: "20:00", reminderAdded: false, dialogues: {},
+});
+
+/** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */
+const keyFor = (user: string): string => `${PREFIX}:${user.toLowerCase()}`;
+
+function read(key: string): Partial<SavedData> | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Partial<SavedData>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function load(user: string): SavedData {
+  const own = read(keyFor(user));
+  if (own) return { ...emptyData(), ...own };
+  // Progresso de antes de existir login: o primeiro usuário que entrar neste aparelho herda.
+  const legacy = read(PREFIX);
+  if (legacy) {
+    try {
+      localStorage.removeItem(PREFIX);
+    } catch {
+      // segue sem apagar
+    }
+    return { ...emptyData(), ...legacy };
+  }
+  return emptyData();
+}
+
+export function save(user: string, data: SavedData): void {
+  try {
+    localStorage.setItem(keyFor(user), JSON.stringify({ ...data, visits: data.visits.slice(-MAX_VISITS) }));
+  } catch {
+    // Modo privado ou armazenamento cheio: o app segue funcionando sem salvar.
+  }
+}
+
+/** Último usuário logado: permite abrir o app offline sem pedir login de novo. */
+export function lastUser(): string | null {
+  try {
+    return localStorage.getItem(LAST_USER);
+  } catch {
+    return null;
+  }
+}
+
+export function setLastUser(user: string | null): void {
+  try {
+    if (user) localStorage.setItem(LAST_USER, user);
+    else localStorage.removeItem(LAST_USER);
+  } catch {
+    // ignora
+  }
+}

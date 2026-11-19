@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Papo Reto · inglês do jeito nativo</title>
+  <meta name="description" content="Aprenda inglês pelo método natural: 5 frases por dia do jeito que os nativos falam, com tradução, áudio e treino.">
+  <meta name="theme-color" content="#2A84D2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Papo Reto">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+</head>
+<body>
+  <header class="top"><div class="wrap">
+    <div class="logo"><span class="dot"></span>papo reto<small>EN</small></div>
+    <div class="top-stats" id="stats"></div>
+    <button class="btn btn-am btn-sm" id="install" hidden>Instalar</button>
+  </div></header>
+
+  <main id="app"></main>
+
+  <nav class="tabbar" aria-label="Seções"><div class="in" role="tablist">
+    <button role="tab" data-tab="hoje" aria-selected="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>Hoje</span></button>
+    <button role="tab" data-tab="dialogo" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v8H7l-4 3z"/><path d="M15 9h6v8l-3-2.5h-6V13"/></svg><span>Diálogo</span></button>
+    <button role="tab" data-tab="ia" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/><path d="M19 3v3M17.5 4.5h3"/></svg><span>IA</span></button>
+    <button role="tab" data-tab="treino" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/></svg><span>Treinar</span></button>
+    <button role="tab" data-tab="situacoes" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg><span>Situações</span></button>
+  </div></nav>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <noscript>O Papo Reto precisa de JavaScript ligado.</noscript>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

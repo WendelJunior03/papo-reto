@@ -1,0 +1,23 @@
+{
+  "name": "papo-reto",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA para aprender inglês pelo método natural: frases do dia a dia do jeito que os nativos falam.",
+  "scripts": {
+    "dev": "bun --hot scripts/dev.ts",
+    "build": "bun scripts/build.ts",
+    "preview": "bun scripts/preview.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
+    "test": "bun test",
+    "audio": "bun scripts/audio.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
+    "zod": "^4.6.7"
+  }
+}

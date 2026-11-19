@@ -1,0 +1,18 @@
+name = "papo-reto"
+main = "worker/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Rotas /api/* e o áudio (recorte em pedaços pro Safari) passam pelo Worker antes dos estáticos.
+run_worker_first = ["/api/*", "/audio/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "papo-reto"
+database_id = "8f1283cd-87d5-4019-9302-a4507cd059bc"
+migrations_dir = "migrations"
