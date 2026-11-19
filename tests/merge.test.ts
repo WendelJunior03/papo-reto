@@ -20,3 +20,18 @@ test("sem nada no servidor, fica o do aparelho", () => {
   const local = { ...emptyData(), start: "2026-11-19" };
   expect(mergeData(local, null)).toBe(local);
 });
+
+import { shouldShowDailySupport } from "../src/state";
+
+test("janela do PIX: uma vez por dia, só pra quem não apoiou e se tiver PIX", () => {
+  const base = { ...emptyData() };
+  expect(shouldShowDailySupport(base, "2026-11-19", true)).toBe(true);
+  expect(shouldShowDailySupport({ ...base, supportPromptAt: "2026-11-19" }, "2026-11-19", true)).toBe(false);
+  expect(shouldShowDailySupport({ ...base, supportPromptAt: "2026-11-18" }, "2026-11-19", true)).toBe(true);
+  expect(shouldShowDailySupport({ ...base, supported: true }, "2026-11-19", true)).toBe(false);
+  expect(shouldShowDailySupport(base, "2026-11-19", false)).toBe(false);
+});
+
+test("quem apoiou num aparelho fica como apoiador nos outros", () => {
+  expect(mergeData({ ...emptyData() }, { supported: true }).supported).toBe(true);
+});

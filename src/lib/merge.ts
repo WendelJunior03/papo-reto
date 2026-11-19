@@ -46,6 +46,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     history,
     installHintDismissed: local.installHintDismissed || !!remote.installHintDismissed,
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
+    supported: local.supported || !!remote.supported,
     supportPromptAt: [local.supportPromptAt, remote.supportPromptAt].filter((x): x is string => !!x).sort().at(-1) ?? null,
     reminderTime: local.reminderAdded ? local.reminderTime : (remote.reminderTime ?? local.reminderTime),
   };

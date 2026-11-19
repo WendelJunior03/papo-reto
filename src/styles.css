@@ -416,3 +416,11 @@ body.sheet-open{overflow:hidden}
 .evo-card .review{margin:0}
 .evo-link{margin:16px 0 0}
 @media (max-width:380px){.badges{grid-template-columns:1fr 1fr}}
+
+.sheet-intro{color:var(--n700);font-size:15px}
+.sheet-foot{display:flex;gap:8px;justify-content:space-between}
+.sheet-foot .btn{flex:1}
+.sheet-small{text-align:center;font-size:12px;color:var(--n500)}
+.support-card.thanks{background:var(--surface);background-image:none;color:var(--ink);border:1px solid var(--n200)}
+.support-card.thanks .eyebrow{color:var(--n600)}
+.support-card.thanks p{color:var(--n700)}

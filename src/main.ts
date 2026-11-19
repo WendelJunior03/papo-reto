@@ -14,6 +14,7 @@ import {
   startPractice, streakDays, toggleKnown, type PracticeMode, type Tab,
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
   setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track,
+  openDailySupport, markSupported,
 } from "./state";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
@@ -147,8 +148,8 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     s = createState(user, new Date(), merged, serverAi, pix);
     s.canInstall = installEvent !== null;
     save(user, merged);
-    const days = streakDays(s);
-    if (days >= 7) nudgeSupport(s, `${days} dias seguidos estudando!`);
+    // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou).
+    openDailySupport(s);
     render();
     await pushNow();
   } catch {
@@ -440,7 +441,8 @@ const actions: Record<string, (el: HTMLElement) => void> = {
 
   "ai-start": () => void sendToAi(""),
 
-  "support-open": () => { s.support = { open: true, amount: 0, nudge: null }; render(); },
+  "support-open": () => { s.support = { open: true, amount: 0, nudge: null, daily: false }; render(); },
+  "support-done": () => { markSupported(s); render(); toast("Muito obrigado pelo apoio!", true); },
   "support-close": () => { s.support.open = false; render(); },
   "support-later": () => { s.support.nudge = null; render(); },
   "support-amount": (el) => { s.support.amount = Number(el.dataset.amount); render(); },

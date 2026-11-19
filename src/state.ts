@@ -5,7 +5,6 @@ import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
 import { emptyDay, load, loadAiKey, save, type AiKey, type DayStats, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
-import { daysBetween } from "./lib/dates";
 
 export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes" | "evolucao";
 export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "treino", "situacoes", "evolucao"];
@@ -75,7 +74,7 @@ export interface AppState {
   aiSettings: { open: boolean; error: string | null };
   /** PIX do projeto (null = apoio escondido), janela aberta, valor escolhido e lembrete atual. */
   pix: PixConfig | null;
-  support: { open: boolean; amount: number; nudge: string | null };
+  support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -113,7 +112,7 @@ export function createState(
     serverAi,
     aiSettings: { open: false, error: null },
     pix,
-    support: { open: false, amount: 0, nudge: null },
+    support: { open: false, amount: 0, nudge: null, daily: false },
   };
 }
 
@@ -273,14 +272,30 @@ export function ensureAi(s: AppState): AiChat {
 }
 
 /* ---------- apoio ao projeto ---------- */
-const NUDGE_EVERY_DAYS = 30;
+/** Abre a janela do PIX sozinha na primeira abertura do dia, pra quem ainda não apoiou. */
+export function shouldShowDailySupport(data: SavedData, today: DateKey, hasPix: boolean): boolean {
+  return hasPix && !data.supported && data.supportPromptAt !== today;
+}
 
-/** Mostra o lembrete de apoio numa conquista, no máximo uma vez a cada 30 dias. */
+export function openDailySupport(s: AppState): boolean {
+  if (!shouldShowDailySupport(s.data, s.today, !!s.pix)) return false;
+  s.support = { open: true, amount: 0, nudge: null, daily: true };
+  s.data.supportPromptAt = s.today;
+  persist(s);
+  return true;
+}
+
+/** Lembrete numa conquista (só se a janela ainda não apareceu hoje). */
 export function nudgeSupport(s: AppState, message: string): void {
-  if (!s.pix || s.support.nudge || s.support.open) return;
-  const last = s.data.supportPromptAt;
-  if (last && daysBetween(last, s.today) < NUDGE_EVERY_DAYS) return;
+  if (!s.pix || s.data.supported || s.support.nudge || s.support.open) return;
+  if (s.data.supportPromptAt === s.today) return;
   s.support.nudge = message;
   s.data.supportPromptAt = s.today;
+  persist(s);
+}
+
+export function markSupported(s: AppState): void {
+  s.data.supported = true;
+  s.support = { open: false, amount: 0, nudge: null, daily: false };
   persist(s);
 }

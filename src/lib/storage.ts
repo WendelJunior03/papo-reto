@@ -13,8 +13,10 @@ export interface SavedData {
   reminderAdded: boolean;
   /** Melhor nota (0–1) no diálogo guiado de cada pacote. */
   dialogues: Record<string, { best: number; date: DateKey }>;
-  /** Última vez que o app pediu apoio (no máximo uma vez a cada 30 dias). */
+  /** Último dia em que a janela de apoio abriu sozinha (no máximo uma vez por dia). */
   supportPromptAt: DateKey | null;
+  /** A pessoa tocou em "Já apoiei": a janela diária para de aparecer. */
+  supported: boolean;
   /** Histórico por dia, pra tela de evolução. */
   history: Record<DateKey, DayStats>;
 }
@@ -42,7 +44,7 @@ const MAX_VISITS = 400;
 
 export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
-  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, history: {},
+  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {},
 });
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */

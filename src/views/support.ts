@@ -2,6 +2,7 @@ import qrcode from "qrcode-generator";
 import { esc } from "../lib/html";
 import { pixPayload, type PixConfig } from "../lib/pix";
 import type { AppState } from "../state";
+import { ui } from "../icons";
 
 export const AMOUNTS = [0, 5, 10, 20] as const;
 
@@ -22,6 +23,14 @@ function qrSvg(text: string): string {
 /** Cartão fixo e discreto (aba Situações). */
 export function supportCard(s: AppState): string {
   if (!s.pix) return "";
+  if (s.data.supported) {
+    return `<div class="support-card thanks">
+      <span class="eyebrow">Apoiador</span>
+      <h3>Obrigado por apoiar o Papo Reto!</h3>
+      <p>Seu apoio ajuda a manter o app no ar e gratuito pra todo mundo.</p>
+      <button class="btn btn-ghost" data-act="support-open">Apoiar de novo</button>
+    </div>`;
+  }
   return `<div class="support-card">
     <span class="eyebrow">Apoie o projeto</span>
     <h3>Gostou do Papo Reto?</h3>
@@ -51,7 +60,12 @@ export function supportSheet(s: AppState): string {
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <button class="sheet-x" data-act="support-close" aria-label="Fechar">×</button>
     <span class="eyebrow">Apoiar com PIX</span>
-    <h3 id="sheet-title">Obrigado por <span class="mark">apoiar!</span></h3>
+    ${
+      s.support.daily
+        ? `<h3 id="sheet-title">Ajude o Papo Reto a <span class="mark">continuar.</span></h3>
+           <p class="sheet-intro">O app é gratuito e feito por uma pessoa só. Se ele está te ajudando a falar inglês, qualquer valor no PIX ajuda a manter no ar e a criar frases novas.</p>`
+        : `<h3 id="sheet-title">Obrigado por <span class="mark">apoiar!</span></h3>`
+    }
     <div class="amounts" role="group" aria-label="Valor">
       ${AMOUNTS.map(
         (v) => `<button class="tab" data-act="support-amount" data-amount="${v}" aria-pressed="${s.support.amount === v}">${v ? `R$ ${v}` : "Outro valor"}</button>`,
@@ -65,5 +79,14 @@ export function supportSheet(s: AppState): string {
       <div><span class="mono">Chave PIX</span><code>${esc(pix.key)}</code><small>${esc(pix.name)}${pix.city ? ` · ${esc(pix.city)}` : ""}</small></div>
       <button class="btn btn-ghost btn-sm" data-act="support-copy-key">Copiar chave</button>
     </div>
+    ${
+      s.data.supported
+        ? ""
+        : `<div class="sheet-foot">
+            <button class="btn btn-ghost" data-act="support-close">Agora não</button>
+            <button class="btn btn-ghost" data-act="support-done">${ui.tick}Já apoiei</button>
+          </div>
+          <p class="sheet-small">“Já apoiei” para de mostrar esta janela todo dia.</p>`
+    }
   </div>`;
 }

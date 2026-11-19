@@ -34,7 +34,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 
 ## Apoio por PIX
 
-Cartão "Apoie o projeto" na aba Situações e um lembrete gentil em conquistas (7 dias seguidos, a cada 50 frases dominadas, diálogo com 90%+) — no máximo uma vez a cada 30 dias, nunca no meio da lição. A janela gera o **PIX copia e cola** (BR Code do Banco Central, com CRC16) e o **QR Code**, com valor livre ou sugerido (R$ 5, 10, 20).
+A janela do PIX abre sozinha **na primeira abertura de cada dia**, pra quem ainda não apoiou ("Agora não" fecha; "Já apoiei" para de mostrar — PIX estático não tem confirmação de pagamento, então é na base da confiança). Também há o cartão "Apoie o projeto" na aba Situações e lembretes em conquistas (se a janela ainda não apareceu no dia). A janela gera o **PIX copia e cola** (BR Code do Banco Central, com CRC16) e o **QR Code**, com valor livre ou sugerido (R$ 5, 10, 20).
 
 Configuração: `PIX_KEY`, `PIX_NAME` e `PIX_CITY` no `.env` (local) ou `bunx wrangler secret put PIX_KEY` etc. (produção). Sem `PIX_KEY`, o apoio fica escondido. Use **chave aleatória** pra não expor CPF/telefone.
 
