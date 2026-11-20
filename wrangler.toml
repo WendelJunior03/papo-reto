@@ -16,3 +16,10 @@ binding = "DB"
 database_name = "papo-reto"
 database_id = "8f1283cd-87d5-4019-9302-a4507cd059bc"
 migrations_dir = "migrations"
+
+# Prévias dos Pull Requests (`wrangler preview` no Cloudflare Workers Builds).
+# Usam o mesmo banco do app no ar, pra dar pra entrar com a conta de verdade e testar.
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "papo-reto"
+database_id = "8f1283cd-87d5-4019-9302-a4507cd059bc"
