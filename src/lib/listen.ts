@@ -49,46 +49,100 @@ const ERRORS: Record<string, string> = {
 const SILENCE_MS = 1600;
 /** Sem ouvir nada nesse tempo, desiste e libera o botão. */
 const NOTHING_MS = 8000;
+/** Quanto esperar o reconhecedor anterior soltar o microfone antes de começar de novo. */
+const RELEASE_MS = 1200;
 
-let active: { rec: Recognition; finish: (deliver: boolean) => void } | null = null;
+/**
+ * Um único reconhecedor, reaproveitado a cada fala. No iPhone, criar um novo enquanto o
+ * anterior ainda está soltando o microfone faz a segunda escuta falhar ("Tentar de novo").
+ */
+let rec: Recognition | null = null;
+let running = false;
+let ended: (() => void) | null = null;
+/** Quem recebe os eventos da escuta atual (as anteriores são ignoradas). */
+let current: { onResult: (e: RecognitionEvent) => void; onError: (code: string) => void; onEnd: () => void } | null = null;
+
+function recognizer(): Recognition {
+  if (rec) return rec;
+  rec = new Ctor!();
+  rec.lang = "en-US";
+  rec.interimResults = true;
+  rec.maxAlternatives = 3;
+  rec.continuous = false;
+  rec.onresult = (e) => current?.onResult(e);
+  rec.onerror = (e) => current?.onError(e.error);
+  rec.onend = () => {
+    running = false;
+    ended?.();
+    ended = null;
+    current?.onEnd();
+  };
+  return rec;
+}
+
+/** Espera o reconhecedor terminar de verdade (ou desiste depois de um tempo). */
+function whenReleased(): Promise<void> {
+  if (!running) return Promise.resolve();
+  return new Promise((resolve) => {
+    const t = setTimeout(() => {
+      running = false;
+      resolve();
+    }, RELEASE_MS);
+    ended = () => {
+      clearTimeout(t);
+      resolve();
+    };
+  });
+}
+
+function tryStart(r: Recognition): boolean {
+  try {
+    r.start();
+    running = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let finishCurrent: ((deliver: boolean) => void) | null = null;
 
 /**
  * Começa a ouvir; devolve uma função que encerra na hora (entregando o que já ouviu).
  * Feito pra nunca ficar preso em "ouvindo": encerra por silêncio, tem tempo limite e
  * entrega o resultado mesmo se o navegador não disparar o fim (acontece no iPhone).
+ * Chame dentro do toque do usuário: o iPhone só libera o microfone nesse momento.
  */
 export function listen(h: ListenHandlers): () => void {
   if (!Ctor) {
     h.onError("Este navegador não reconhece voz. Use o microfone do teclado.");
     return () => {};
   }
-  // Uma escuta por vez: a anterior é descartada antes de começar outra.
-  active?.finish(false);
-
-  const rec = new Ctor();
-  rec.lang = "en-US";
-  rec.interimResults = true;
-  rec.maxAlternatives = 3;
-  rec.continuous = false;
+  // Uma escuta por vez: a anterior é descartada (sem entregar resultado).
+  finishCurrent?.(false);
+  const r = recognizer();
 
   let finals: string[] = [];
   let partial = "";
   let done = false;
   let silence: ReturnType<typeof setTimeout> | undefined;
-  const nothing = setTimeout(() => finish(true), NOTHING_MS);
+  let nothing: ReturnType<typeof setTimeout> | undefined;
 
   function finish(deliver: boolean, error?: string): void {
     if (done) return;
     done = true;
     clearTimeout(silence);
     clearTimeout(nothing);
-    rec.onresult = rec.onerror = rec.onend = null;
-    try {
-      rec.abort();
-    } catch {
-      // já tinha parado
+    if (current === session) current = null;
+    if (finishCurrent === finish) finishCurrent = null;
+    // Pede pra parar (sem forçar): o microfone é solto do jeito que o Safari espera.
+    if (running) {
+      try {
+        r.stop();
+      } catch {
+        // já tinha parado
+      }
     }
-    if (active?.rec === rec) active = null;
     if (!deliver) return;
     if (error) return h.onError(error);
     const alts = finals.length ? finals : partial.trim() ? [partial.trim()] : [];
@@ -96,36 +150,50 @@ export function listen(h: ListenHandlers): () => void {
     else h.onError(ERRORS["no-speech"]!);
   }
 
-  rec.onresult = (e) => {
-    partial = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const r = e.results[i]!;
-      if (r.isFinal) finals = Array.from({ length: r.length }, (_, k) => r[k]!.transcript.trim()).filter(Boolean);
-      else partial += r[0]!.transcript;
-    }
-    h.onPartial(partial || finals[0] || "");
-    clearTimeout(nothing);
-    clearTimeout(silence);
-    silence = setTimeout(() => finish(true), SILENCE_MS);
+  const session = {
+    onResult(e: RecognitionEvent) {
+      partial = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i]!;
+        if (res.isFinal) finals = Array.from({ length: res.length }, (_, k) => res[k]!.transcript.trim()).filter(Boolean);
+        else partial += res[0]!.transcript;
+      }
+      h.onPartial(partial || finals[0] || "");
+      clearTimeout(nothing);
+      clearTimeout(silence);
+      silence = setTimeout(() => finish(true), SILENCE_MS);
+    },
+    onError(code: string) {
+      if (code === "aborted") return;
+      finish(true, ERRORS[code] ?? `Não consegui ouvir (${code}). Toque no microfone de novo.`);
+    },
+    onEnd() {
+      finish(true);
+    },
   };
-  rec.onerror = (e) => {
-    if (e.error === "aborted") return;
-    finish(true, ERRORS[e.error] ?? "Não consegui ouvir. Toque no microfone de novo.");
-  };
-  rec.onend = () => finish(true);
 
-  active = { rec, finish };
-  try {
-    rec.start();
-  } catch {
-    finish(true, "O microfone ainda estava ocupado. Toque de novo.");
+  function begin(): void {
+    if (done) return;
+    current = session;
+    nothing = setTimeout(() => finish(true), NOTHING_MS);
+    if (tryStart(r)) return;
+    // O iPhone ainda não soltou o microfone: espera um pouco e tenta mais uma vez.
+    setTimeout(() => {
+      if (done) return;
+      if (!tryStart(r)) finish(true, "O microfone ainda estava ocupado (start). Toque de novo.");
+    }, 400);
   }
+
+  finishCurrent = finish;
+  // Começa já, dentro do toque, quando o reconhecedor está livre (o caso normal).
+  if (!running) begin();
+  else void whenReleased().then(begin);
   return () => finish(true);
 }
 
 /** Cancela a escuta atual sem entregar resultado (ao trocar de tela, por exemplo). */
 export function cancelListening(): void {
-  active?.finish(false);
+  finishCurrent?.(false);
 }
 
 const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);

@@ -248,8 +248,6 @@ function toast(msg: string, ok = false): void {
 
 function setTab(tab: Tab): void {
   cancelListening();
-  clearTimeout(pendingMic);
-  pendingMic = undefined;
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
   s.tab = tab;
@@ -263,7 +261,6 @@ function setTab(tab: Tab): void {
 
 /* ---------- diálogo guiado ---------- */
 let stopListening: () => void = () => {};
-let pendingMic: ReturnType<typeof setTimeout> | undefined;
 
 /** Toca as falas da outra pessoa que acabaram de aparecer. */
 function playLines(indexes: number[]): void {
@@ -300,26 +297,14 @@ function toggleMic(): void {
   const d = s.dialogue;
   if (!d) return;
   // Tocar de novo enquanto ouve: encerra na hora e confere o que já foi dito.
-  if (d.listening) {
-    if (pendingMic) {
-      // ainda nem tinha começado a ouvir: só cancela
-      clearTimeout(pendingMic);
-      pendingMic = undefined;
-      d.listening = false;
-      return render();
-    }
-    return stopListening();
-  }
+  if (d.listening) return stopListening();
   stopAudio();
   d.listening = true;
   d.error = null;
   render();
-  // No iPhone o reconhecimento falha se ainda tiver áudio tocando: espera o áudio soltar.
-  pendingMic = setTimeout(() => {
-    pendingMic = undefined;
-    if (!d.listening || s.dialogue !== d) return;
-    stopListening = startDialogueListening(d);
-  }, 350);
+  // Liga o microfone dentro do próprio toque (o iPhone só libera nesse momento);
+  // o áudio que estivesse tocando já foi parado acima.
+  stopListening = startDialogueListening(d);
 }
 
 function startDialogueListening(d: NonNullable<AppState["dialogue"]>): () => void {
@@ -499,7 +484,7 @@ function aiMic(): void {
   stopAudio();
   const input = document.getElementById("ai-input") as HTMLTextAreaElement | null;
   toast("Ouvindo… fale em inglês");
-  setTimeout(() => {
+  {
     stopListening = listen({
       onPartial: (text) => {
         if (input) input.value = text;
@@ -514,7 +499,7 @@ function aiMic(): void {
       },
       onError: (msg) => toast(msg),
     });
-  }, 350);
+  }
 }
 
 /* ---------- ações ---------- */
