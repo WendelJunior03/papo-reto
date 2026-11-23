@@ -319,9 +319,12 @@ function finishSong(): void {
   m.ended = true;
   const hits = Object.values(m.answers).filter((a) => a.ok).length;
   const prev = s.data.songs[m.video.id];
-  if (!prev || hits / (m.blanks.length || 1) >= prev.best / (prev.total || 1)) {
-    s.data.songs[m.video.id] = { title: m.video.title, best: hits, total: m.blanks.length, level: m.level, date: s.today };
-  }
+  const attempt = { date: s.today, hits, total: m.blanks.length, level: m.level };
+  const attempts = [...(prev?.attempts ?? []), attempt].slice(-30);
+  const better = !prev || hits / (m.blanks.length || 1) >= prev.best / (prev.total || 1);
+  s.data.songs[m.video.id] = better
+    ? { title: m.video.title, best: hits, total: m.blanks.length, level: m.level, date: s.today, attempts }
+    : { ...prev!, date: s.today, attempts };
   persist(s);
   updateMusicParts();
 }
@@ -738,6 +741,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   logout: () => void logout(),
   "goto-dialogo": () => setTab("dialogo"),
   "goto-evolucao": () => setTab("evolucao"),
+  "goto-musica": () => setTab("musica"),
   "goto-hoje": () => setTab("hoje"),
   "goto-ia": () => setTab("ia"),
 

@@ -19,8 +19,24 @@ export interface SavedData {
   supported: boolean;
   /** Histórico por dia, pra tela de evolução. */
   history: Record<DateKey, DayStats>;
-  /** Melhor resultado por música (aba Música). */
-  songs: Record<string, { title: string; best: number; total: number; level: string; date: DateKey }>;
+  /** Resultado por música (aba Música): a melhor e cada tentativa, pra mostrar a evolução. */
+  songs: Record<string, SongRecord>;
+}
+
+export interface SongAttempt {
+  date: DateKey;
+  hits: number;
+  total: number;
+  level: string;
+}
+
+export interface SongRecord {
+  title: string;
+  best: number;
+  total: number;
+  level: string;
+  date: DateKey;
+  attempts?: SongAttempt[];
 }
 
 export interface DayStats {
