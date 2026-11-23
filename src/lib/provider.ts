@@ -10,7 +10,14 @@ export const DEFAULT_MODEL: Record<Provider, string> = {
 };
 
 /** Se o modelo padrão do Gemini estiver sobrecarregado (503), tenta estes em ordem. */
-export const GEMINI_FALLBACKS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"] as const;
+export const GEMINI_FALLBACKS = [
+  "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+] as const;
 
 /** Reconhece de quem é a chave pelo começo dela. */
 export function providerFor(key: string): Provider | null {

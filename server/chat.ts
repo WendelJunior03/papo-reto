@@ -87,7 +87,7 @@ const KICKOFF: Turn = { role: "user", content: "(Start the role-play with a shor
 const withKickoff = (messages: Turn[]): Turn[] => (messages[0]?.role === "user" ? messages : [KICKOFF, ...messages]);
 
 class ChatFailure extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly detail?: string[]) {
     super(message);
   }
 }
@@ -156,7 +156,13 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
     parts: [{ text: m.content }],
   }));
   let busy = false;
-  for (const model of models) {
+  const tried: string[] = [];
+  // Duas rodadas: se todos estiverem cheios, espera um pouco e tenta de novo (picos costumam durar segundos).
+  for (const [round, model] of [...models.map((m) => [0, m] as const), ...models.map((m) => [1, m] as const)]) {
+    if (round === 1 && model === models[0]) {
+      if (!busy) break;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
     try {
       const response = await ai.models.generateContent({
         model,
@@ -179,6 +185,8 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
         // Sobrecarregado, limite momentâneo ou modelo indisponível: tenta o próximo.
         if ([404, 429, 500, 503].includes(error.status)) {
           busy ||= error.status === 429 || error.status === 503;
+          tried.push(`${model}:${error.status}`);
+          console.error("[gemini]", model, error.status, String(error.message).slice(0, 160));
           continue;
         }
         throw new ChatFailure(`Erro do Gemini (${error.status}). Tenta de novo.`, 502);
@@ -186,10 +194,18 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
       throw error;
     }
   }
-  throw new ChatFailure(busy ? "A IA está sobrecarregada agora. Tenta de novo em alguns segundos." : "Nenhum modelo do Gemini disponível agora.", 503);
+  throw new ChatFailure(busy ? "A IA está sobrecarregada agora. Tenta de novo em alguns segundos." : "Nenhum modelo do Gemini disponível agora.", 503, tried);
 }
 
-export async function handleChat(req: Request, auth: ChatAuth, extra: Record<string, unknown> = {}): Promise<Response> {
+/**
+ * `extra` vai junto na resposta. Pode ser uma função: ela só roda se a IA responder
+ * (ex.: começar/contar a sessão só quando deu certo).
+ */
+export async function handleChat(
+  req: Request,
+  auth: ChatAuth,
+  extra: Record<string, unknown> | (() => Promise<Record<string, unknown>>) = {},
+): Promise<Response> {
   let body: ChatRequest;
   try {
     body = ChatRequest.parse(await req.json());
@@ -201,9 +217,9 @@ export async function handleChat(req: Request, auth: ChatAuth, extra: Record<str
       auth.provider === "openai" ? await askOpenAI(auth, body)
       : auth.provider === "gemini" ? await askGemini(auth, body)
       : await askAnthropic(auth, body);
-    return json({ ...reply, ...extra });
+    return json({ ...reply, ...(typeof extra === "function" ? await extra() : extra) });
   } catch (error) {
-    if (error instanceof ChatFailure) return json({ error: error.message }, error.status);
+    if (error instanceof ChatFailure) return json({ error: error.message, ...(error.detail ? { detail: error.detail } : {}) }, error.status);
     // Nunca registra a chave: só o tipo do erro.
     console.error("[api/chat]", error instanceof Error ? error.name : "erro desconhecido");
     return json({ error: "A IA não respondeu agora. Tenta de novo." }, 502);

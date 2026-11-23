@@ -225,28 +225,28 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
       if (st.state === "cooldown") {
         return json({ error: "Sua sessão de conversa acabou. A próxima libera em breve.", session: st }, 429);
       }
-      if (st.state === "ready") {
-        const endsAt = now + sc.minutes * 60_000;
-        await db.run(
-          "INSERT INTO ai_sessions (user_id, started_at, ends_at, messages) VALUES (?, ?, ?, 0) ON CONFLICT(user_id) DO UPDATE SET started_at = excluded.started_at, ends_at = excluded.ends_at, messages = 0",
-          user.id,
-          now,
-          endsAt,
-        );
-        // Avisa quando a próxima sessão liberar (se o aparelho aceitou notificações).
-        await schedulePush(db, user.id, "ai-ready", endsAt + sc.cooldownMinutes * 60_000);
-        st = { state: "active", endsAt, messagesLeft: sc.maxMessages };
-      }
       if (st.state === "active" && st.messagesLeft <= 0) {
         return json({ error: "Você usou todas as mensagens desta sessão.", session: st }, 429);
       }
-      await db.run("UPDATE ai_sessions SET messages = messages + 1 WHERE user_id = ?", user.id);
-      const after = sessionState(
-        await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id),
-        now,
-        sc,
-      );
-      return handleChat(req, serverAuth, { session: after });
+      const startNew = st.state === "ready";
+      // A sessão só começa (e a mensagem só conta) se a IA responder de verdade.
+      return handleChat(req, serverAuth, async () => {
+        if (startNew) {
+          const endsAt = now + sc.minutes * 60_000;
+          await db.run(
+            "INSERT INTO ai_sessions (user_id, started_at, ends_at, messages) VALUES (?, ?, ?, 1) ON CONFLICT(user_id) DO UPDATE SET started_at = excluded.started_at, ends_at = excluded.ends_at, messages = 1",
+            user.id,
+            now,
+            endsAt,
+          );
+          // Avisa quando a próxima sessão liberar (se o aparelho aceitou notificações).
+          await schedulePush(db, user.id, "ai-ready", endsAt + sc.cooldownMinutes * 60_000);
+        } else {
+          await db.run("UPDATE ai_sessions SET messages = messages + 1 WHERE user_id = ?", user.id);
+        }
+        const row2 = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
+        return { session: sessionState(row2, now, sc) };
+      });
     }
 
     case "GET /api/push/key":

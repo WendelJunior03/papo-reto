@@ -51,6 +51,26 @@ mock.module("openai", () => {
   return { default: OpenAI };
 });
 
+let geminiCalls: string[] = [];
+let geminiFails = true;
+mock.module("@google/genai", () => {
+  class ApiError extends Error {
+    constructor(public status: number) {
+      super("busy");
+    }
+  }
+  class GoogleGenAI {
+    models = {
+      generateContent: async (p: { model: string }) => {
+        geminiCalls.push(p.model);
+        if (geminiFails) throw new ApiError(503);
+        return { text: JSON.stringify(reply) };
+      },
+    };
+  }
+  return { GoogleGenAI, ApiError };
+});
+
 const { handleChat, providerFor } = await import("../server/chat");
 afterAll(() => mock.restore());
 
@@ -89,11 +109,32 @@ describe("rota /api/chat", () => {
   });
 });
 
+describe("Gemini", () => {
+  const gem = { provider: "gemini" as const, key: "AIza" + "x".repeat(35) };
+  test("todos sobrecarregados: tenta a lista duas vezes, devolve 503 e não roda o 'depois do sucesso'", async () => {
+    geminiCalls = [];
+    geminiFails = true;
+    let started = false;
+    const res = await handleChat(req({ scenario: null, messages: [] }), gem, async () => ((started = true), {}));
+    expect(res.status).toBe(503);
+    expect(geminiCalls.length).toBe(12); // 6 modelos × 2 rodadas
+    expect(started).toBe(false);
+  });
+  test("respondendo: devolve a fala e o extra calculado depois do sucesso", async () => {
+    geminiCalls = [];
+    geminiFails = false;
+    const res = await handleChat(req({ scenario: null, messages: [] }), gem, async () => ({ session: { state: "active" } }));
+    expect(await res.json()).toEqual({ ...reply, session: { state: "active" } });
+    expect(geminiCalls).toEqual(["gemini-3.8-flash"]);
+  });
+});
+
 describe("reconhece a chave", () => {
   test("Anthropic, OpenAI ou nenhuma", () => {
     expect(providerFor("sk-ant-api03-xxxx")).toBe("anthropic");
     expect(providerFor("sk-proj-abcdefghijklmnopqrstu")).toBe("openai");
     expect(providerFor("sk-abcdefghijklmnopqrstuvwx")).toBe("openai");
     expect(providerFor("minha-senha")).toBeNull();
+    expect(providerFor("AIza" + "x".repeat(35))).toBe("gemini");
   });
 });
