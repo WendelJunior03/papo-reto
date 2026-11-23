@@ -133,3 +133,29 @@ async function staleWhileRevalidate(req: Request): Promise<Response> {
     .catch(() => cached ?? Response.error());
   return cached ?? network;
 }
+
+/** Notificação do servidor (vem sem conteúdo: o texto é fixo). */
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    self.registration.showNotification("Papo Reto", {
+      body: "Sua conversa com a IA liberou! Bora praticar mais 7 minutos?",
+      icon: "./icons/icon-192.png",
+      badge: "./icons/icon-192.png",
+      tag: "ai-ready",
+      data: { url: "./#ia" },
+    }),
+  );
+});
+
+/** Tocar na notificação abre o app (ou traz a aba aberta pra frente) na conversa com a IA. */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data as { url?: string } | null)?.url ?? "./", self.location.href).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      const win = wins.find((w) => new URL(w.url).origin === self.location.origin);
+      if (win) return win.navigate(url).then((w) => w?.focus());
+      return self.clients.openWindow(url);
+    }),
+  );
+});

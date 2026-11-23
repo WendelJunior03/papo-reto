@@ -14,7 +14,7 @@ import {
   startPractice, streakDays, toggleKnown, type PracticeMode, type Tab,
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
   setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track,
-  openDailySupport, markSupported,
+  openDailySupport, markSupported, aiLocked,
 } from "./state";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
@@ -84,8 +84,8 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         ? await api.signup(username, password, String(f.get("code") ?? ""))
         : await api.login(username, password);
     auth.busy = false;
-    const me = await api.me().catch(() => ({ serverAi: false, pix: null }));
-    await start(res.username, true, me.serverAi, me.pix);
+    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false }));
+    await start(res.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     auth.busy = false;
     auth.error = e instanceof ApiError ? e.message : "Não foi possível entrar.";
@@ -134,12 +134,13 @@ window.addEventListener("online", () => {
 });
 
 /** Entra no app como `user`: junta o progresso do aparelho com o da conta e desenha. */
-async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix()): Promise<void> {
+async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
   setLastUser(user);
   if (online) savePix(pix);
   document.body.classList.remove("auth");
   s = createState(user, new Date(), undefined, serverAi, pix);
   s.canInstall = installEvent !== null;
+  s.pushAvailable = push;
   render();
   if (!online) return;
   try {
@@ -147,6 +148,9 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     const merged = mergeData(load(user), remote.data);
     s = createState(user, new Date(), merged, serverAi, pix);
     s.canInstall = installEvent !== null;
+    s.pushAvailable = push;
+    void checkPushOn();
+    if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
     // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou).
     openDailySupport(s);
@@ -160,7 +164,7 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
 async function boot(): Promise<void> {
   try {
     const me = await api.me();
-    await start(me.username, true, me.serverAi, me.pix);
+    await start(me.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     const cached = lastUser();
     if (e instanceof ApiError && e.status === 0 && cached) {
@@ -251,6 +255,7 @@ function setTab(tab: Tab): void {
   s.tab = tab;
   history.replaceState(null, "", tab === "hoje" ? location.pathname : `#${tab}`);
   const revealed = tab === "dialogo" ? ensureDialogue(s) : [];
+  if (tab === "ia") void refreshAiSession();
   render();
   window.scrollTo(0, 0);
   playLines(revealed);
@@ -336,10 +341,97 @@ function startDialogueListening(d: NonNullable<AppState["dialogue"]>): () => voi
 }
 
 /* ---------- conversa com IA ---------- */
+type SessionInfo = NonNullable<AppState["aiSession"]>;
+
+/** Pergunta ao servidor como está a sessão com a IA do app (só quando usa a IA do app). */
+async function refreshAiSession(): Promise<void> {
+  if (!s || s.aiKey || !s.serverAi) return;
+  try {
+    s.aiSession = await api.aiSession();
+    if (s.tab === "ia") render();
+  } catch {
+    // offline: mantém o que já sabia
+  }
+}
+
+/** Relógio da sessão: atualiza a contagem sem redesenhar a tela inteira. */
+setInterval(() => {
+  const st = s?.aiSession;
+  if (!s || !st || s.aiKey) return;
+  const now = Date.now();
+  if (st.state === "active") {
+    if (now >= st.endsAt) {
+      s.aiSession = { state: "cooldown", endedAt: st.endsAt, availableAt: st.endsAt + 60 * 60_000 };
+      if (s.tab === "ia") {
+        render();
+        toast("Sessão concluída! Revise as correções.", true);
+      }
+      return;
+    }
+    const el = document.getElementById("ai-timer");
+    if (el) {
+      const t = Math.ceil((st.endsAt - now) / 1000);
+      el.textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+    }
+  } else if (st.state === "cooldown") {
+    if (now >= st.availableAt) {
+      void refreshAiSession();
+      toast("Sua conversa com a IA liberou!", true);
+      s.aiSession = { state: "ready", minutes: 7 };
+      return;
+    }
+    const el = document.getElementById("ai-wait");
+    if (el) el.textContent = `${Math.max(1, Math.ceil((st.availableAt - now) / 60_000))} min`;
+  }
+}, 1000);
+
+/* ---------- notificações ---------- */
+const b64ToBytes = (b64: string): Uint8Array<ArrayBuffer> => {
+  const raw = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64.length + 3) % 4));
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+};
+
+async function swRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!("serviceWorker" in navigator)) return null;
+  // Em desenvolvimento não há service worker: não espera pra sempre.
+  return Promise.race([navigator.serviceWorker.ready, new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+}
+
+async function checkPushOn(): Promise<void> {
+  if (!s?.pushAvailable || !("PushManager" in window)) return;
+  const reg = await swRegistration();
+  s.pushOn = !!(await reg?.pushManager.getSubscription());
+}
+
+async function enablePush(): Promise<void> {
+  const standalone =
+    matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (!("PushManager" in window) || !("Notification" in window)) {
+    return toast(/iPhone|iPad/.test(navigator.userAgent) && !standalone
+      ? "No iPhone, instale o app na Tela de Início pra receber avisos"
+      : "Este navegador não recebe notificações");
+  }
+  if ((await Notification.requestPermission()) !== "granted") return toast("Sem permissão pra notificar. Dá pra liberar nos ajustes do navegador.");
+  try {
+    const reg = await swRegistration();
+    if (!reg) return toast("Abra o app instalado pra ativar os avisos");
+    const { publicKey } = await api.pushKey();
+    const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) }));
+    await api.pushSubscribe(sub.toJSON());
+    s.pushOn = true;
+    render();
+    toast("Pronto! Te avisamos quando liberar.", true);
+  } catch {
+    toast("Não deu pra ativar os avisos agora. Tenta de novo.");
+  }
+}
+
 async function sendToAi(text: string): Promise<void> {
   const chat = ensureAi(s);
   const content = text.trim().slice(0, 600);
-  if (chat.loading) return;
+  if (chat.loading || aiLocked(s)) return;
   if (content) {
     chat.messages.push({ role: "user", content });
     track(s, { ai: 1 });
@@ -360,24 +452,33 @@ async function sendToAi(text: string): Promise<void> {
         ...(s.aiKey ? { "X-AI-Key": s.aiKey.key, ...(s.aiKey.model ? { "X-AI-Model": s.aiKey.model } : {}) } : {}),
       },
       body: JSON.stringify({
-        scenario: { title: pack.title, scene: pack.scene, phrases: pack.phrases.map((p) => plain(p.en)) },
+        scenario: chat.free ? null : { title: pack.title, scene: pack.scene, phrases: pack.phrases.map((p) => plain(p.en)) },
         messages: chat.messages.slice(-24).map((m) => ({ role: m.role, content: m.content })),
       }),
     });
     const data = (await res.json().catch(() => ({}))) as {
       reply?: string; reply_pt?: string; correction?: string | null; correction_note?: string | null; error?: string; needsKey?: boolean;
+      session?: SessionInfo;
     };
+    if (data.session) s.aiSession = data.session;
+    if (res.status === 429 && data.session?.state === "cooldown") {
+      // sessão acabou: o cartão de espera explica, sem mensagem de erro
+      const last = chat.messages.at(-1);
+      if (content && last?.role === "user" && !last.checked) chat.messages.pop();
+      return;
+    }
     if (data.needsKey) {
       s.serverAi = false;
       s.aiSettings = { open: true, error: null };
     }
     if (!res.ok || !data.reply) {
       throw new Error(
-        data.error ?? (res.status === 404 ? "A conversa com IA precisa do servidor do app (bun dev ou bun preview com ANTHROPIC_API_KEY)." : "A IA não respondeu. Tenta de novo."),
+        data.error ?? (res.status === 404 ? "A conversa com IA precisa do servidor do app (bun dev ou bun preview com GEMINI_API_KEY)." : "A IA não respondeu. Tenta de novo."),
       );
     }
     const last = chat.messages.at(-1);
     if (content && last?.role === "user") {
+      last.checked = true;
       last.correction = data.correction ?? null;
       last.note = data.correction_note ?? null;
     }
@@ -487,6 +588,12 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "dl-restart": () => { const revealed = startDialogue(s); render(); window.scrollTo(0, 0); playLines(revealed); },
 
   "ai-start": () => void sendToAi(""),
+  "ai-mode": (el) => {
+    const free = el.dataset.free === "1";
+    s.ai = { free, packIndex: s.packIndex, messages: [], loading: false, error: null, draft: "", openPt: new Set() };
+    render();
+  },
+  "ai-notify": () => void enablePush(),
 
   "support-open": () => { s.support = { open: true, amount: 0, nudge: null, daily: false }; render(); },
   "support-done": () => { markSupported(s); render(); toast("Muito obrigado pelo apoio!", true); },
@@ -515,7 +622,11 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     set.has(i) ? set.delete(i) : set.add(i);
     render();
   },
-  "ai-reset": () => { s.ai = null; ensureAi(s); render(); },
+  "ai-reset": () => {
+    const free = s.ai?.free ?? true;
+    s.ai = { free, packIndex: s.packIndex, messages: [], loading: false, error: null, draft: "", openPt: new Set() };
+    render();
+  },
   "ai-prev": () => { goToPack(s, s.packIndex - 1); ensureAi(s); render(); },
   "ai-next": () => { goToPack(s, s.packIndex + 1); ensureAi(s); render(); },
   reminder: () => {

@@ -1,15 +1,17 @@
 /**
- * POST /api/chat — conversa livre com IA, no papel de um nativo da situação escolhida.
- * Funciona com chave da Anthropic (Claude) ou da OpenAI (GPT): a chave pode ser a do
- * próprio usuário (vem do aparelho dele, a cada pedido, e não é guardada) ou a do servidor.
+ * POST /api/chat — conversa com IA: papo livre (padrão) ou no papel de uma situação.
+ * Funciona com chave do Google (Gemini, a padrão do app), da Anthropic (Claude) ou da
+ * OpenAI (GPT): a chave pode ser a do próprio usuário (vem do aparelho dele, a cada pedido,
+ * e não é guardada) ou a do servidor.
  * Usa só a API padrão de Request/Response: roda no servidor do Bun e num Cloudflare Worker.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
+import { ApiError as GeminiApiError, GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { DEFAULT_MODEL, type Provider } from "../src/lib/provider";
+import { DEFAULT_MODEL, GEMINI_FALLBACKS, type Provider } from "../src/lib/provider";
 
 export { providerFor } from "../src/lib/provider";
 
@@ -37,11 +39,14 @@ export const ChatReply = z.object({
 export type ChatReply = z.infer<typeof ChatReply>;
 
 const ChatRequest = z.object({
-  scenario: z.object({
-    title: z.string().max(80),
-    scene: z.string().max(160),
-    phrases: z.array(z.string().max(160)).max(10),
-  }),
+  /** null = papo livre, sobre o que a pessoa quiser. */
+  scenario: z
+    .object({
+      title: z.string().max(80),
+      scene: z.string().max(160),
+      phrases: z.array(z.string().max(160)).max(10),
+    })
+    .nullable(),
   messages: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(MAX_CHARS) }))
     .max(MAX_TURNS),
@@ -49,7 +54,21 @@ const ChatRequest = z.object({
 export type ChatRequest = z.infer<typeof ChatRequest>;
 type Turn = ChatRequest["messages"][number];
 
+const CORRECTIONS = `Corrections go only in the correction fields, never in your reply. Correct the learner's last message when it has a grammar mistake, sounds unnatural or textbook-like, or is in Portuguese: give the way a native would say it. Leave small typos and perfectly fine messages alone (null).`;
+
 function systemPrompt(s: ChatRequest["scenario"]): string {
+  if (!s) {
+    return `You are Sam, a friendly American in your late twenties chatting with a Brazilian learner of English, like a new friend would.
+
+Talk about whatever the learner wants: their day, work, family, hobbies, plans, movies, food, travel, faith, anything. If they don't bring a topic, ask an easy, open question about their day. Follow their lead, react with genuine interest and share a little about yourself so it feels like a real conversation.
+
+How to talk:
+- Casual, current American English, the way people actually talk. Contractions, short sentences, natural fillers when they fit. Slang only when it would really be used.
+- Keep it at an intermediate level: 1 to 3 short sentences per turn, usually ending with a question that keeps the conversation going.
+- If the learner writes in Portuguese or mixes languages, answer in simple English and give the English version in the correction field.
+
+${CORRECTIONS}`;
+  }
   return `You are a friendly American native speaker role-playing with a Brazilian learner of English who is practicing everyday conversation.
 
 Situation: "${s.title}" — ${s.scene}. Play the other person in this situation (pick a fitting first name or role) and stay in character.
@@ -60,7 +79,7 @@ How to talk:
 - Work these expressions into the conversation naturally when they fit (don't force them all): ${s.phrases.join(" | ")}.
 - If the learner writes in Portuguese or mixes languages, answer in simple English and give the English version in the correction field.
 
-Corrections go only in the correction fields, never in your in-character reply. Correct the learner's last message when it has a grammar mistake, sounds unnatural or textbook-like, or is in Portuguese: give the way a native would say it. Leave small typos and perfectly fine messages alone (null).`;
+${CORRECTIONS}`;
 }
 
 /** A IA abre a conversa, mas as APIs esperam que a primeira mensagem seja do usuário. */
@@ -128,7 +147,49 @@ async function askOpenAI(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
   }
 }
 
-export async function handleChat(req: Request, auth: ChatAuth): Promise<Response> {
+/** Gemini: tenta o modelo escolhido ou a lista padrão, pulando os sobrecarregados. */
+async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
+  const ai = new GoogleGenAI({ apiKey: auth.key });
+  const models = auth.model ? [auth.model] : [...GEMINI_FALLBACKS];
+  const contents = withKickoff(body.messages).map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  let busy = false;
+  for (const model of models) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: systemPrompt(body.scenario),
+          responseMimeType: "application/json",
+          responseJsonSchema: z.toJSONSchema(ChatReply),
+          maxOutputTokens: 800,
+        },
+      });
+      const parsed = ChatReply.safeParse(JSON.parse(response.text ?? "null"));
+      if (parsed.success) return parsed.data;
+      throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
+    } catch (error) {
+      if (error instanceof ChatFailure) throw error;
+      if (error instanceof SyntaxError) throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
+      if (error instanceof GeminiApiError) {
+        if (error.status === 401 || error.status === 403) throw new ChatFailure("A chave do Gemini foi recusada. Confira se copiou certo.", 401);
+        // Sobrecarregado, limite momentâneo ou modelo indisponível: tenta o próximo.
+        if ([404, 429, 500, 503].includes(error.status)) {
+          busy ||= error.status === 429 || error.status === 503;
+          continue;
+        }
+        throw new ChatFailure(`Erro do Gemini (${error.status}). Tenta de novo.`, 502);
+      }
+      throw error;
+    }
+  }
+  throw new ChatFailure(busy ? "A IA está sobrecarregada agora. Tenta de novo em alguns segundos." : "Nenhum modelo do Gemini disponível agora.", 503);
+}
+
+export async function handleChat(req: Request, auth: ChatAuth, extra: Record<string, unknown> = {}): Promise<Response> {
   let body: ChatRequest;
   try {
     body = ChatRequest.parse(await req.json());
@@ -136,8 +197,11 @@ export async function handleChat(req: Request, auth: ChatAuth): Promise<Response
     return json({ error: "Pedido inválido" }, 400);
   }
   try {
-    const reply = auth.provider === "openai" ? await askOpenAI(auth, body) : await askAnthropic(auth, body);
-    return json(reply);
+    const reply =
+      auth.provider === "openai" ? await askOpenAI(auth, body)
+      : auth.provider === "gemini" ? await askGemini(auth, body)
+      : await askAnthropic(auth, body);
+    return json({ ...reply, ...extra });
   } catch (error) {
     if (error instanceof ChatFailure) return json({ error: error.message }, error.status);
     // Nunca registra a chave: só o tipo do erro.

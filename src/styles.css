@@ -433,3 +433,13 @@ body.sheet-open{overflow:hidden}
 .flip-pt{margin:2px 0 0;font-size:14.5px;color:var(--n700)}
 .flip-how{margin:0;display:flex;gap:8px;align-items:flex-start;font-size:13.5px;color:var(--n700)}
 .flip-how svg{width:16px;height:16px;flex:none;margin-top:2px;color:var(--atn-tx)}
+
+/* sessão com a IA do app */
+.ai-mode{margin-bottom:14px}
+.ai-session{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--n700);margin-bottom:14px}
+.ai-session.live b{font-variant-numeric:tabular-nums;font-size:16px;color:var(--ink)}
+.ai-cooldown{background:var(--surface);border:1px solid var(--n200);border-radius:var(--r);padding:18px;display:grid;gap:10px;justify-items:start;margin-bottom:16px}
+.ai-cooldown h3{font-size:21px}
+.ai-cooldown p{color:var(--n700);font-size:15px}
+.ai-notify-on{display:flex;gap:6px;align-items:center;color:var(--verde-tx) !important;font-weight:600}
+.ai-notify-on svg{width:16px;height:16px}

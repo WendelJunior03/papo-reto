@@ -17,6 +17,7 @@ export function bunDb(path = join(import.meta.dir, "../data/papo.db")): Db {
   return {
     first: async <T>(sql: string, ...params: unknown[]) =>
       (sqlite.query(sql).get(...(params as SQLQueryBindings[])) as T | null) ?? null,
+    all: async <T>(sql: string, ...params: unknown[]) => sqlite.query(sql).all(...(params as SQLQueryBindings[])) as T[],
     run: async (sql: string, ...params: unknown[]) => {
       sqlite.query(sql).run(...(params as SQLQueryBindings[]));
     },
