@@ -67,7 +67,7 @@ export function renderDialogue(s: AppState): string {
             : ""
         }
         <form class="dl-type" data-form="dl-type">
-          <input id="dl-input" autocomplete="off" autocapitalize="off" spellcheck="false" lang="en"
+          <input id="dl-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" lang="en-US"
             placeholder="${canListen ? "ou digite / use o microfone do teclado" : "Toque no microfone do teclado e fale"}">
           <button class="btn btn-ultra" type="submit">Enviar</button>
         </form>

@@ -2,7 +2,7 @@ import "./styles.css";
 import { findPhrase } from "./data";
 import { esc } from "./lib/html";
 import { play, playSequence, speakTts, stop as stopAudio } from "./lib/speech";
-import { listen } from "./lib/listen";
+import { cancelListening, listen, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
 import { bestOf } from "./lib/match";
 import { plain } from "./lib/html";
 import { packs } from "./data";
@@ -98,7 +98,7 @@ async function logout(): Promise<void> {
   if (dirty) await pushNow();
   await api.logout().catch(() => {});
   setLastUser(null);
-  stopListening();
+  cancelListening();
   stopAudio();
   auth.mode = "login";
   auth.error = null;
@@ -243,7 +243,10 @@ function toast(msg: string, ok = false): void {
 }
 
 function setTab(tab: Tab): void {
-  stopListening();
+  cancelListening();
+  clearTimeout(pendingMic);
+  pendingMic = undefined;
+  if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
   s.tab = tab;
   history.replaceState(null, "", tab === "hoje" ? location.pathname : `#${tab}`);
@@ -255,6 +258,7 @@ function setTab(tab: Tab): void {
 
 /* ---------- diálogo guiado ---------- */
 let stopListening: () => void = () => {};
+let pendingMic: ReturnType<typeof setTimeout> | undefined;
 
 /** Toca as falas da outra pessoa que acabaram de aparecer. */
 function playLines(indexes: number[]): void {
@@ -272,10 +276,16 @@ function expectedLine(): string | null {
   return d && i !== null && i !== undefined ? packs[d.packIndex]!.chat[i]!.en : null;
 }
 
-function checkAnswer(alternatives: string[]): void {
+function checkAnswer(alternatives: string[], spoken = true): void {
   const expected = expectedLine();
-  if (!expected) return;
+  const d = s.dialogue;
+  if (!expected || !d) return;
   const { said, result } = bestOf(expected, alternatives);
+  // Veio em português (teclado/ditado no idioma errado): explica em vez de dar nota.
+  if (!result.pass && looksPortuguese(said)) {
+    d.error = spoken ? PORTUGUESE_HELP : "Isso parece português — escreva a frase em inglês.";
+    return render();
+  }
   recordTurn(s, { said, result });
   render();
   scrollToEnd();
@@ -284,12 +294,31 @@ function checkAnswer(alternatives: string[]): void {
 function toggleMic(): void {
   const d = s.dialogue;
   if (!d) return;
-  if (d.listening) return stopListening();
+  // Tocar de novo enquanto ouve: encerra na hora e confere o que já foi dito.
+  if (d.listening) {
+    if (pendingMic) {
+      // ainda nem tinha começado a ouvir: só cancela
+      clearTimeout(pendingMic);
+      pendingMic = undefined;
+      d.listening = false;
+      return render();
+    }
+    return stopListening();
+  }
   stopAudio();
   d.listening = true;
   d.error = null;
   render();
-  stopListening = listen({
+  // No iPhone o reconhecimento falha se ainda tiver áudio tocando: espera o áudio soltar.
+  pendingMic = setTimeout(() => {
+    pendingMic = undefined;
+    if (!d.listening || s.dialogue !== d) return;
+    stopListening = startDialogueListening(d);
+  }, 350);
+}
+
+function startDialogueListening(d: NonNullable<AppState["dialogue"]>): () => void {
+  return listen({
     onPartial: (text) => {
       const live = document.getElementById("dl-live");
       if (live) live.textContent = text || "Ouvindo… fale agora";
@@ -368,14 +397,23 @@ async function sendToAi(text: string): Promise<void> {
 function aiMic(): void {
   stopAudio();
   const input = document.getElementById("ai-input") as HTMLTextAreaElement | null;
-  stopListening = listen({
-    onPartial: (text) => {
-      if (input) input.value = text;
-    },
-    onDone: (alts) => void sendToAi(alts[0] ?? ""),
-    onError: (msg) => toast(msg),
-  });
   toast("Ouvindo… fale em inglês");
+  setTimeout(() => {
+    stopListening = listen({
+      onPartial: (text) => {
+        if (input) input.value = text;
+      },
+      onDone: (alts) => {
+        const text = alts[0] ?? "";
+        if (looksPortuguese(text)) {
+          if (input) input.value = "";
+          return toast("Entendi em português — fale em inglês (veja o teclado English no iPhone)");
+        }
+        void sendToAi(text);
+      },
+      onError: (msg) => toast(msg),
+    });
+  }, 350);
 }
 
 /* ---------- ações ---------- */
@@ -576,7 +614,7 @@ document.addEventListener("submit", (e) => {
   }
   if (form.dataset.form === "dl-type") {
     const value = (document.getElementById("dl-input") as HTMLInputElement | null)?.value.trim();
-    if (value) checkAnswer([value]);
+    if (value) checkAnswer([value], false);
   }
   if (form.dataset.form === "ai-key") {
     const f = new FormData(form);

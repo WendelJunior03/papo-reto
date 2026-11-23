@@ -102,7 +102,7 @@ export function renderAi(s: AppState): string {
       empty || needsKey
         ? ""
         : `<form class="ai-compose" data-form="ai-send">
-            <textarea id="ai-input" rows="1" lang="en" placeholder="Escreva em inglês…" ${chat.loading ? "disabled" : ""}>${esc(chat.draft)}</textarea>
+            <textarea id="ai-input" rows="1" lang="en-US" autocorrect="off" autocapitalize="sentences" placeholder="Escreva em inglês…" ${chat.loading ? "disabled" : ""}>${esc(chat.draft)}</textarea>
             ${canListen ? `<button type="button" class="btn btn-ghost btn-ic" data-act="ai-mic" aria-label="Falar">${ui.mic}</button>` : ""}
             <button type="submit" class="btn btn-ultra btn-ic" aria-label="Enviar" ${chat.loading ? "disabled" : ""}>${ui.arrow}</button>
           </form>
