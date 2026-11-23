@@ -35,6 +35,12 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     history[day] = merged;
   }
 
+  const songs: SavedData["songs"] = { ...remote.songs };
+  for (const [id, sg] of Object.entries(local.songs ?? {})) {
+    const r = songs[id];
+    if (!r || sg.best / (sg.total || 1) >= r.best / (r.total || 1)) songs[id] = sg;
+  }
+
   const starts = [local.start, remote.start].filter((x): x is string => !!x).sort();
   return {
     ...local,
@@ -44,6 +50,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     progress,
     dialogues,
     history,
+    songs,
     installHintDismissed: local.installHintDismissed || !!remote.installHintDismissed,
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
     supported: local.supported || !!remote.supported,

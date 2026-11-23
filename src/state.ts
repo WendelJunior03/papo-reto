@@ -6,9 +6,10 @@ import { emptyDay, load, loadAiKey, save, type AiKey, type DayStats, type SavedD
 import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
 import type { SessionState } from "../server/session";
+import type { Blank, Level, LyricLine } from "./lib/lyrics";
 
-export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes" | "evolucao";
-export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "treino", "situacoes", "evolucao"];
+export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao";
+export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao"];
 export type PracticeMode = "falar" | "ouvir";
 
 export interface Practice {
@@ -57,6 +58,45 @@ export interface AiChat {
   openPt: Set<number>;
 }
 
+export interface MusicVideo {
+  id: string;
+  title: string;
+  channel: string;
+  thumb: string;
+  duration: number;
+}
+
+export interface LyricsCandidate {
+  id: number;
+  track: string;
+  artist: string;
+  duration: number;
+}
+
+/** Aba Música: busca, vídeo escolhido, letra e o jogo de completar. */
+export interface Music {
+  query: string;
+  results: MusicVideo[];
+  loading: boolean;
+  error: string | null;
+  level: Level;
+  video: MusicVideo | null;
+  lines: LyricLine[];
+  blanks: Blank[];
+  lyrics: { chosen: LyricsCandidate; candidates: LyricsCandidate[] } | null;
+  /** Ajuste da sincronia: segundos somados ao tempo da letra (clipe com introdução). */
+  offset: number;
+  /** Linha tocando agora. */
+  line: number;
+  /** Lacuna esperando resposta (música pausada). */
+  pending: Blank | null;
+  /** Respostas dadas, por linha. */
+  answers: Record<number, { chosen: string; ok: boolean }>;
+  ended: boolean;
+  /** Música parada esperando a pessoa (depois de um erro). */
+  paused: boolean;
+}
+
 export interface AppState {
   /** Usuário logado (dono do progresso). */
   user: string;
@@ -86,6 +126,8 @@ export interface AppState {
   /** PIX do projeto (null = apoio escondido), janela aberta, valor escolhido e lembrete atual. */
   pix: PixConfig | null;
   support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
+  music: Music;
+  musicSearch: boolean;
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -126,6 +168,8 @@ export function createState(
     aiSession: null,
     pushAvailable: false,
     pushOn: false,
+    music: emptyMusic(),
+    musicSearch: false,
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
   };
@@ -318,4 +362,12 @@ export function markSupported(s: AppState): void {
   s.data.supported = true;
   s.support = { open: false, amount: 0, nudge: null, daily: false };
   persist(s);
+}
+
+/* ---------- música ---------- */
+export function emptyMusic(): Music {
+  return {
+    query: "", results: [], loading: false, error: null, level: "facil", video: null, lines: [], blanks: [],
+    lyrics: null, offset: 0, line: -1, pending: null, answers: {}, ended: false, paused: false,
+  };
 }

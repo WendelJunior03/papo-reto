@@ -6,6 +6,7 @@ import { bunDb } from "../server/db-bun";
 
 const dist = join(import.meta.dir, "../dist");
 const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: process.env.GEMINI_API_KEY,
+  youtubeKey: process.env.YOUTUBE_API_KEY,
   anthropicKey: process.env.ANTHROPIC_API_KEY, openaiKey: process.env.OPENAI_API_KEY,
   vapid: process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
     ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateJwk: process.env.VAPID_PRIVATE_KEY, subject: "https://papo-reto.papo-reto.workers.dev" }

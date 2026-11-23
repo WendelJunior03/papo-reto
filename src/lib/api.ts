@@ -26,7 +26,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
-  me: () => call<{ username: string; serverAi: boolean; push?: boolean; pix: PixConfig | null }>("GET", "me"),
+  me: () => call<{ username: string; serverAi: boolean; push?: boolean; musicSearch?: boolean; pix: PixConfig | null }>("GET", "me"),
   aiSession: () => call<import("../../server/session").SessionState>("GET", "ai/session"),
   pushKey: () => call<{ publicKey: string }>("GET", "push/key"),
   pushSubscribe: (sub: PushSubscriptionJSON) => call<{ ok: true }>("POST", "push/subscribe", sub),

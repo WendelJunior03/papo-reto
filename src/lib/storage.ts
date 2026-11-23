@@ -19,6 +19,8 @@ export interface SavedData {
   supported: boolean;
   /** Histórico por dia, pra tela de evolução. */
   history: Record<DateKey, DayStats>;
+  /** Melhor resultado por música (aba Música). */
+  songs: Record<string, { title: string; best: number; total: number; level: string; date: DateKey }>;
 }
 
 export interface DayStats {
@@ -34,9 +36,12 @@ export interface DayStats {
   ai: number;
   /** Total de frases dominadas no fim do dia (foto do dia). */
   known: number;
+  /** Lacunas de música respondidas e acertos (treino de ouvido). */
+  listen: number;
+  listenHits: number;
 }
 
-export const emptyDay = (): DayStats => ({ learned: 0, reviews: 0, hits: 0, spoken: 0, spokenSum: 0, ai: 0, known: 0 });
+export const emptyDay = (): DayStats => ({ learned: 0, reviews: 0, hits: 0, spoken: 0, spokenSum: 0, ai: 0, known: 0, listen: 0, listenHits: 0 });
 
 const PREFIX = "papo-reto:v1";
 const LAST_USER = "papo-reto:user";
@@ -44,7 +49,7 @@ const MAX_VISITS = 400;
 
 export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
-  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {},
+  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {}, songs: {},
 });
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */
