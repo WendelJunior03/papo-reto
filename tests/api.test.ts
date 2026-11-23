@@ -124,14 +124,30 @@ describe("proteções", () => {
     ))!;
     expect(res.status).toBe(400);
   });
-  test("limita mensagens pra IA por dia (com a chave do servidor)", async () => {
-    // Limite já estourado: bloqueia antes de qualquer chamada à IA (o teste não sai pra internet).
-    cfg.aiDailyLimit = 0;
-    cfg.anthropicKey = "sk-ant-servidor";
+  test("IA do app: sessão em espera bloqueia antes de chamar a IA (o teste não sai pra internet)", async () => {
+    cfg.geminiKey = "AIza" + "x".repeat(35);
     await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
-    const r = await call("POST", "chat", { scenario: { title: "t", scene: "s", phrases: [] }, messages: [] });
+    const me = (await call("GET", "me")).data;
+    expect(me.serverAi).toBe(true);
+    const id = (await cfg.db.first<{ id: number }>("SELECT id FROM users WHERE username = 'wendel'"))!.id;
+    const now = Date.now();
+    // sessão que acabou há 5 minutos: está em espera
+    await cfg.db.run("INSERT INTO ai_sessions (user_id, started_at, ends_at, messages) VALUES (?, ?, ?, 3)", id, now - 12 * 60_000, now - 5 * 60_000);
+    const st = (await call("GET", "ai/session")).data as { state: string; availableAt: number };
+    expect(st.state).toBe("cooldown");
+    expect(Math.round((st.availableAt - now) / 60_000)).toBe(55);
+    const r = await call("POST", "chat", { scenario: null, messages: [] });
     expect(r.status).toBe(429);
-    expect(String(r.data.error)).toContain("limite");
+    expect((r.data.session as { state: string }).state).toBe("cooldown");
+  });
+  test("notificações: inscreve o aparelho só com endpoint https", async () => {
+    cfg.vapid = { publicKey: "pub", privateJwk: "{}", subject: "https://x" };
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    expect((await call("GET", "push/key")).data.publicKey).toBe("pub");
+    expect((await call("POST", "push/subscribe", { endpoint: "http://inseguro", keys: { p256dh: "a", auth: "b" } })).status).toBe(400);
+    expect((await call("POST", "push/subscribe", { endpoint: "https://push.exemplo.com/abc", keys: { p256dh: "a", auth: "b" } })).status).toBe(200);
+    const n = await cfg.db.first<{ c: number }>("SELECT COUNT(*) AS c FROM push_subs");
+    expect(n!.c).toBe(1);
   });
 });
 

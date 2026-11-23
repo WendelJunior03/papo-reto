@@ -3,15 +3,18 @@
  * Segredos: `bunx wrangler secret put ANTHROPIC_API_KEY` e `bunx wrangler secret put SIGNUP_CODE`.
  * Banco: D1 (`bunx wrangler d1 create papo-reto` e `bunx wrangler d1 migrations apply papo-reto --remote`).
  */
-import { handleApi } from "../server/api";
+import { handleApi, type ApiConfig } from "../server/api";
+import { sendDuePushes } from "../server/push";
 import { d1Db, type D1Database } from "../server/db";
 
 interface Env {
   DB: D1Database;
+  GEMINI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   SIGNUP_CODE?: string;
-  AI_DAILY_LIMIT?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
   PIX_KEY?: string;
   PIX_NAME?: string;
   PIX_CITY?: string;
@@ -44,17 +47,31 @@ async function audio(req: Request, env: Env): Promise<Response> {
   return new Response(buf.slice(start, end + 1), { status: 206, headers });
 }
 
+function config(env: Env): ApiConfig {
+  return {
+    db: d1Db(env.DB),
+    signupCode: env.SIGNUP_CODE,
+    geminiKey: env.GEMINI_API_KEY,
+    anthropicKey: env.ANTHROPIC_API_KEY,
+    openaiKey: env.OPENAI_API_KEY,
+    pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,
+    vapid:
+      env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+        ? { publicKey: env.VAPID_PUBLIC_KEY, privateJwk: env.VAPID_PRIVATE_KEY, subject: "https://papo-reto.papo-reto.workers.dev" }
+        : undefined,
+  };
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (new URL(req.url).pathname.startsWith("/audio/")) return audio(req, env);
-    const res = await handleApi(req, {
-      db: d1Db(env.DB),
-      signupCode: env.SIGNUP_CODE,
-      anthropicKey: env.ANTHROPIC_API_KEY,
-      openaiKey: env.OPENAI_API_KEY,
-      pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,
-      aiDailyLimit: env.AI_DAILY_LIMIT ? Number(env.AI_DAILY_LIMIT) : undefined,
-    });
+    const res = await handleApi(req, config(env));
     return res ?? env.ASSETS.fetch(req);
+  },
+
+  /** Cron (a cada minuto): manda as notificações agendadas, como "sua conversa liberou". */
+  async scheduled(_event: unknown, env: Env): Promise<void> {
+    const cfg = config(env);
+    if (cfg.vapid) await sendDuePushes(cfg.db, cfg.vapid);
   },
 };

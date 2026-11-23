@@ -11,6 +11,10 @@ not_found_handling = "single-page-application"
 # Rotas /api/* e o áudio (recorte em pedaços pro Safari) passam pelo Worker antes dos estáticos.
 run_worker_first = ["/api/*", "/audio/*"]
 
+# Cron: a cada minuto manda as notificações agendadas (ex.: "sua conversa com a IA liberou").
+[triggers]
+crons = ["* * * * *"]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "papo-reto"

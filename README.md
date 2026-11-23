@@ -25,7 +25,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Hoje** — um pacote por dia (o primeiro dia de uso abre o pacote 1). Cada frase tem o trecho nativo grifado, tradução, dica com 2 exemplos extras (com áudio), **"Virar pergunta"** (ou "Ver resposta", quando a frase já é pergunta) mostrando a frase transformada e o que mudou na gramática, áudio normal e devagar, e "Sei essa".
 - **Na vida real** — mini-diálogo com as frases do pacote; a tradução fica escondida até pedir.
 - **Diálogo** — a cena do pacote, turno a turno: a outra pessoa fala (com áudio), você responde **em voz alta**. O reconhecimento de voz do navegador transcreve, o app compara com a fala certa (tolerante a contrações e pontuação) e marca o que faltou. Sem reconhecimento de voz, uma caixa de texto aceita o ditado do teclado. A melhor nota de cada cena fica salva.
-- **IA** — conversa livre com um nativo no papel da situação, usando a chave de IA da própria pessoa (OpenAI ou Anthropic). Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
+- **IA** — papo livre (ou no papel da situação) com correção embaixo de cada fala; sessões de 7 min com 1 h de espera e notificação quando libera. Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
 - **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
@@ -60,11 +60,15 @@ bun run build && bunx wrangler deploy
 
 ## Conversa com IA
 
-Cada pessoa pode usar **a própria chave de API** — da **OpenAI** (`sk-...`, modelo padrão `gpt-5.4-mini`) ou da **Anthropic** (`sk-ant-...`, modelo padrão `claude-opus-5`) — colando na aba IA. O modelo pode ser trocado.
+**Padrão: Gemini (chave do app), em sessões.** Cada sessão dura **7 minutos** (até 40 mensagens) e começa na primeira mensagem; depois há **1 hora de espera**. Quando libera, o app manda uma **notificação** (Web Push) — a pessoa ativa em "Me avise quando liberar".
 
-- A chave fica salva **só no aparelho** da pessoa (não vai pro banco) e segue por HTTPS a cada mensagem até `POST /api/chat`, que repassa pra empresa de IA. O servidor não guarda nem registra.
-- Opcional: o servidor pode ter uma chave própria (`ANTHROPIC_API_KEY` ou `OPENAI_API_KEY`) pra quem não tiver chave — com limite de 60 mensagens por dia por usuário (`AI_DAILY_LIMIT`).
-- Login da CLI da OpenAI/ChatGPT não funciona em sites — só chave de API.
+- **Papo livre** (padrão): conversa sobre o que a pessoa quiser com o "Sam", um americano simpático. Ou **Situação**: a IA faz o papel da cena do pacote.
+- Embaixo de cada fala da pessoa: a **correção** com o jeito natural de dizer e a explicação, ou o selo **Natural** quando estava certo.
+- Modelos do Gemini: tenta `gemini-3.8-flash` e cai pro `gemini-3.5-flash-lite` se estiver sobrecarregado.
+- **Chave própria** (Gemini `AIza…`, OpenAI `sk-…` ou Anthropic `sk-ant-…`) colada na aba IA: sem limite de sessão, cobrada na conta da pessoa. Fica só no aparelho e vai por HTTPS a cada mensagem; o servidor não guarda.
+- Notificações: o cron do Worker (a cada minuto) envia os avisos agendados. No iPhone, só com o app instalado na Tela de Início (iOS 16.4+).
+
+Configuração (`.env` local ou `bunx wrangler secret put …`): `GEMINI_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gerar com `generateVapid()` de `server/push.ts`).
 
 ## Estrutura
 

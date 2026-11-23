@@ -9,6 +9,10 @@
  *   GET  /api/progress      progresso salvo do usuário
  *   PUT  /api/progress      { data, updatedAt }
  *   POST /api/chat          conversa com IA (só logado)
+ *   GET  /api/ai/session    estado da sessão com a IA do app (pronta, em andamento ou em espera)
+ *   GET  /api/push/key      chave pública pra inscrever o aparelho nas notificações
+ *   POST /api/push/subscribe   { endpoint, keys: { p256dh, auth } }
+ *   POST /api/push/unsubscribe { endpoint }
  */
 import { z } from "zod";
 import {
@@ -17,19 +21,35 @@ import {
 } from "./auth";
 import { handleChat, providerFor, type ChatAuth } from "./chat";
 import type { Db } from "./db";
+import { schedulePush, type Vapid } from "./push";
+import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 
 export interface ApiConfig {
   db: Db;
   /** Código de convite para criar conta. Sem ele, o cadastro fica fechado. */
   signupCode?: string;
   /** Chaves do servidor (opcionais). Quem colocar a própria chave no app usa a dela. */
+  geminiKey?: string;
   anthropicKey?: string;
   openaiKey?: string;
+  /** Sessão com a IA do app (padrão: 7 min de conversa, 1 h de espera, 40 mensagens). */
+  session?: Partial<SessionConfig>;
+  /** Chaves das notificações; sem elas o app não oferece aviso. */
+  vapid?: Vapid;
   /** PIX pra doações (chave, nome e cidade do recebedor). Sem chave, o app não mostra o apoio. */
   pix?: { key: string; name: string; city: string };
-  /** Mensagens pra IA por usuário por dia usando a chave do servidor (padrão 60). */
-  aiDailyLimit?: number;
 }
+
+const serverAuthOf = (cfg: ApiConfig): ChatAuth | null =>
+  cfg.geminiKey ? { provider: "gemini", key: cfg.geminiKey }
+  : cfg.anthropicKey ? { provider: "anthropic", key: cfg.anthropicKey }
+  : cfg.openaiKey ? { provider: "openai", key: cfg.openaiKey }
+  : null;
+
+const PushSub = z.object({
+  endpoint: z.string().url().max(1000).refine((u) => u.startsWith("https://"), "Endpoint inválido."),
+  keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }),
+});
 
 const MAX_BODY_BYTES = 400_000;
 
@@ -156,7 +176,8 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
     case "GET /api/me":
       return json({
         username: user.username,
-        serverAi: !!(cfg.anthropicKey || cfg.openaiKey),
+        serverAi: !!serverAuthOf(cfg),
+        push: !!cfg.vapid,
         pix: cfg.pix?.key ? cfg.pix : null,
       });
 
@@ -177,35 +198,79 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
       return json({ ok: true });
     }
 
+    case "GET /api/ai/session": {
+      const row = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
+      return json(sessionState(row, Date.now(), { ...DEFAULT_SESSION, ...cfg.session }));
+    }
+
     case "POST /api/chat": {
-      // Chave do próprio usuário: vem do aparelho dele a cada pedido e não é guardada nem registrada.
+      // Chave do próprio usuário: vem do aparelho dele a cada pedido e não é guardada nem registrada. Sem limite de sessão.
       const userKey = req.headers.get("x-ai-key")?.trim();
       const model = req.headers.get("x-ai-model")?.trim().slice(0, 60) || undefined;
       if (userKey) {
         const provider = providerFor(userKey);
-        if (!provider) return json({ error: "Chave não reconhecida. Use uma chave da OpenAI (sk-...) ou da Anthropic (sk-ant-...)." }, 400);
+        if (!provider) return json({ error: "Chave não reconhecida. Use uma chave do Google (Gemini), da OpenAI (sk-...) ou da Anthropic (sk-ant-...)." }, 400);
         if (model && !/^[a-zA-Z0-9._:-]+$/.test(model)) return json({ error: "Nome de modelo inválido." }, 400);
         return handleChat(req, { provider, key: userKey, model });
       }
 
-      const serverAuth: ChatAuth | null = cfg.anthropicKey
-        ? { provider: "anthropic", key: cfg.anthropicKey }
-        : cfg.openaiKey
-          ? { provider: "openai", key: cfg.openaiKey }
-          : null;
+      const serverAuth = serverAuthOf(cfg);
       if (!serverAuth) return json({ error: "Adicione sua chave de IA pra conversar.", needsKey: true }, 403);
 
-      const day = new Date().toISOString().slice(0, 10);
-      await db.run(
-        "INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1) ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1",
-        user.id,
-        day,
-      );
-      const used = await db.first<{ count: number }>("SELECT count FROM ai_usage WHERE user_id = ? AND day = ?", user.id, day);
-      if ((used?.count ?? 0) > (cfg.aiDailyLimit ?? 60)) {
-        return json({ error: "Você chegou no limite de conversas com a IA hoje. Amanhã libera de novo." }, 429);
+      // IA do app: sessões de X minutos com espera entre elas.
+      const sc = { ...DEFAULT_SESSION, ...cfg.session };
+      const now = Date.now();
+      const row = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
+      let st = sessionState(row, now, sc, true);
+      if (st.state === "cooldown") {
+        return json({ error: "Sua sessão de conversa acabou. A próxima libera em breve.", session: st }, 429);
       }
-      return handleChat(req, serverAuth);
+      if (st.state === "active" && st.messagesLeft <= 0) {
+        return json({ error: "Você usou todas as mensagens desta sessão.", session: st }, 429);
+      }
+      const startNew = st.state === "ready";
+      // A sessão só começa (e a mensagem só conta) se a IA responder de verdade.
+      return handleChat(req, serverAuth, async () => {
+        if (startNew) {
+          const endsAt = now + sc.minutes * 60_000;
+          await db.run(
+            "INSERT INTO ai_sessions (user_id, started_at, ends_at, messages) VALUES (?, ?, ?, 1) ON CONFLICT(user_id) DO UPDATE SET started_at = excluded.started_at, ends_at = excluded.ends_at, messages = 1",
+            user.id,
+            now,
+            endsAt,
+          );
+          // Avisa quando a próxima sessão liberar (se o aparelho aceitou notificações).
+          await schedulePush(db, user.id, "ai-ready", endsAt + sc.cooldownMinutes * 60_000);
+        } else {
+          await db.run("UPDATE ai_sessions SET messages = messages + 1 WHERE user_id = ?", user.id);
+        }
+        const row2 = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
+        return { session: sessionState(row2, now, sc) };
+      });
+    }
+
+    case "GET /api/push/key":
+      return cfg.vapid ? json({ publicKey: cfg.vapid.publicKey }) : json({ error: "Notificações não configuradas." }, 404);
+
+    case "POST /api/push/subscribe": {
+      if (!cfg.vapid) return json({ error: "Notificações não configuradas." }, 404);
+      const b = await body(req, PushSub);
+      if (b instanceof Response) return b;
+      await db.run(
+        "INSERT INTO push_subs (endpoint, user_id, p256dh, auth) VALUES (?, ?, ?, ?) ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth",
+        b.endpoint,
+        user.id,
+        b.keys.p256dh,
+        b.keys.auth,
+      );
+      return json({ ok: true });
+    }
+
+    case "POST /api/push/unsubscribe": {
+      const b = await body(req, z.object({ endpoint: z.string().max(1000) }));
+      if (b instanceof Response) return b;
+      await db.run("DELETE FROM push_subs WHERE endpoint = ? AND user_id = ?", b.endpoint, user.id);
+      return json({ ok: true });
     }
   }
 

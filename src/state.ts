@@ -5,6 +5,7 @@ import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
 import { emptyDay, load, loadAiKey, save, type AiKey, type DayStats, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
+import type { SessionState } from "../server/session";
 
 export type Tab = "hoje" | "dialogo" | "ia" | "treino" | "situacoes" | "evolucao";
 export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "treino", "situacoes", "evolucao"];
@@ -38,12 +39,16 @@ export interface Dialogue {
 export interface AiMessage {
   role: "user" | "assistant";
   content: string;
+  /** A IA já conferiu esta fala (com ou sem correção). */
+  checked?: boolean;
   pt?: string;
   correction?: string | null;
   note?: string | null;
 }
 
 export interface AiChat {
+  /** true = papo livre (padrão); false = no papel da situação do pacote. */
+  free: boolean;
   packIndex: number;
   messages: AiMessage[];
   loading: boolean;
@@ -74,6 +79,10 @@ export interface AppState {
   aiKey: AiKey | null;
   serverAi: boolean;
   aiSettings: { open: boolean; error: string | null };
+  /** Sessão com a IA do app (7 min de conversa, 1 h de espera) e notificações. */
+  aiSession: SessionState | null;
+  pushAvailable: boolean;
+  pushOn: boolean;
   /** PIX do projeto (null = apoio escondido), janela aberta, valor escolhido e lembrete atual. */
   pix: PixConfig | null;
   support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
@@ -114,6 +123,9 @@ export function createState(
     aiKey: loadAiKey(user),
     serverAi,
     aiSettings: { open: false, error: null },
+    aiSession: null,
+    pushAvailable: false,
+    pushOn: false,
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
   };
@@ -269,11 +281,15 @@ function saveDialogueScore(s: AppState): void {
 /* ---------- conversa com IA ---------- */
 
 export function ensureAi(s: AppState): AiChat {
-  if (!s.ai || s.ai.packIndex !== s.packIndex) {
-    s.ai = { packIndex: s.packIndex, messages: [], loading: false, error: null, draft: "", openPt: new Set() };
+  // Papo livre não depende do pacote; no modo situação, trocar de pacote começa outra conversa.
+  if (!s.ai || (!s.ai.free && s.ai.packIndex !== s.packIndex)) {
+    s.ai = { free: s.ai?.free ?? true, packIndex: s.packIndex, messages: [], loading: false, error: null, draft: "", openPt: new Set() };
   }
   return s.ai;
 }
+
+/** A IA do app (sem chave própria) está liberada pra conversar agora? */
+export const aiLocked = (s: AppState): boolean => !s.aiKey && s.aiSession?.state === "cooldown";
 
 /* ---------- apoio ao projeto ---------- */
 /** Abre a janela do PIX sozinha na primeira abertura do dia, pra quem ainda não apoiou. */
