@@ -150,7 +150,7 @@ async function askOpenAI(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
 /** Gemini: tenta o modelo escolhido ou a lista padrão, pulando os sobrecarregados. */
 async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
   // O SDK repete sozinho até 5 vezes com espera de até 60 s; aqui quem decide é a lista de reserva.
-  const ai = new GoogleGenAI({ apiKey: auth.key, httpOptions: { retryOptions: { attempts: 1 }, timeout: 12_000 } });
+  const ai = new GoogleGenAI({ apiKey: auth.key, httpOptions: { retryOptions: { attempts: 1 }, timeout: 8_000 } });
   const models = auth.model ? [auth.model] : [...GEMINI_FALLBACKS];
   const deadline = Date.now() + 20_000;
   const contents = withKickoff(body.messages).map((m) => ({
@@ -186,15 +186,18 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
       if (error instanceof GeminiApiError) {
         if (error.status === 401 || error.status === 403) throw new ChatFailure("A chave do Gemini foi recusada. Confira se copiou certo.", 401);
         // Sobrecarregado, limite momentâneo ou modelo indisponível: tenta o próximo.
-        if ([404, 429, 500, 503].includes(error.status)) {
-          busy ||= error.status === 429 || error.status === 503;
+        if ([404, 429, 500, 502, 503, 504].includes(error.status)) {
+          busy ||= error.status !== 404;
           tried.push(`${model}:${error.status}`);
           console.error("[gemini]", model, error.status, String(error.message).slice(0, 160));
           continue;
         }
         throw new ChatFailure(`Erro do Gemini (${error.status}). Tenta de novo.`, 502);
       }
-      throw error;
+      // Rede caiu ou a tentativa estourou o tempo: também tenta o próximo modelo.
+      busy = true;
+      tried.push(`${model}:rede`);
+      continue;
     }
   }
   throw new ChatFailure(busy ? "A IA está sobrecarregada agora. Tenta de novo em alguns segundos." : "Nenhum modelo do Gemini disponível agora.", 503, tried);
