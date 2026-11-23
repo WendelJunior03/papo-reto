@@ -149,8 +149,10 @@ async function askOpenAI(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
 
 /** Gemini: tenta o modelo escolhido ou a lista padrão, pulando os sobrecarregados. */
 async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
-  const ai = new GoogleGenAI({ apiKey: auth.key });
+  // O SDK repete sozinho até 5 vezes com espera de até 60 s; aqui quem decide é a lista de reserva.
+  const ai = new GoogleGenAI({ apiKey: auth.key, httpOptions: { retryOptions: { attempts: 1 }, timeout: 12_000 } });
   const models = auth.model ? [auth.model] : [...GEMINI_FALLBACKS];
+  const deadline = Date.now() + 20_000;
   const contents = withKickoff(body.messages).map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
@@ -159,6 +161,7 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
   const tried: string[] = [];
   // Duas rodadas: se todos estiverem cheios, espera um pouco e tenta de novo (picos costumam durar segundos).
   for (const [round, model] of [...models.map((m) => [0, m] as const), ...models.map((m) => [1, m] as const)]) {
+    if (Date.now() > deadline) break; // não deixa a pessoa esperando mais de ~20 s
     if (round === 1 && model === models[0]) {
       if (!busy) break;
       await new Promise((r) => setTimeout(r, 1500));
