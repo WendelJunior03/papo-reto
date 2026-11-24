@@ -26,6 +26,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Na vida real** — mini-diálogo com as frases do pacote; a tradução fica escondida até pedir.
 - **Diálogo** — a cena do pacote, turno a turno: a outra pessoa fala (com áudio), você responde **em voz alta**. O reconhecimento de voz do navegador transcreve, o app compara com a fala certa (tolerante a contrações e pontuação) e marca o que faltou. Sem reconhecimento de voz, uma caixa de texto aceita o ditado do teclado. A melhor nota de cada cena fica salva.
 - **IA** — papo livre (ou no papel da situação) com correção embaixo de cada fala; sessões de 7 min com 1 h de espera e notificação quando libera. Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
+- **Música** — treino de ouvido: busca (ou cola o link de) um vídeo do YouTube, a letra sincronizada vem do LRCLIB e algumas palavras somem. No fim da linha a música pausa e você escolhe entre 4 opções parecidas; dá pra ouvir a palavra, repetir o trecho e ajustar a sincronia. Três níveis.
 - **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
@@ -37,6 +38,12 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 A janela do PIX abre sozinha **na primeira abertura de cada dia**, pra quem ainda não apoiou ("Agora não" fecha; "Já apoiei" para de mostrar — PIX estático não tem confirmação de pagamento, então é na base da confiança). Também há o cartão "Apoie o projeto" na aba Situações e lembretes em conquistas (se a janela ainda não apareceu no dia). A janela gera o **PIX copia e cola** (BR Code do Banco Central, com CRC16) e o **QR Code**, com valor livre ou sugerido (R$ 5, 10, 20).
 
 Configuração: `PIX_KEY`, `PIX_NAME` e `PIX_CITY` no `.env` (local) ou `bunx wrangler secret put PIX_KEY` etc. (produção). Sem `PIX_KEY`, o apoio fica escondido. Use **chave aleatória** pra não expor CPF/telefone.
+
+## Música (treino de ouvido)
+
+- Player oficial do YouTube (IFrame API) e letra sincronizada do [LRCLIB](https://lrclib.net) (aberto, sem chave). As letras são buscadas na hora e não ficam guardadas no app.
+- Busca por nome: precisa de `YOUTUBE_API_KEY` (YouTube Data API v3, grátis, ~100 buscas/dia). Sem a chave, a pessoa cola o link do vídeo.
+- Lacunas e opções: `src/lib/lyrics.ts` (sem palavras curtas/comuns, opções parecidas por distância de edição, mesma música = mesmas lacunas).
 
 ## Contas e banco de dados
 

@@ -35,6 +35,22 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     history[day] = merged;
   }
 
+  const songs: SavedData["songs"] = { ...remote.songs };
+  for (const [id, sg] of Object.entries(local.songs ?? {})) {
+    const r = songs[id];
+    const better = !r || sg.best / (sg.total || 1) >= r.best / (r.total || 1) ? sg : r;
+    // Tentativas dos dois aparelhos, sem repetir, em ordem de data.
+    const seen = new Set<string>();
+    const attempts = [...(r?.attempts ?? []), ...(sg.attempts ?? [])]
+      .filter((a) => {
+        const k = `${a.date}|${a.hits}|${a.total}|${a.level}`;
+        return seen.has(k) ? false : (seen.add(k), true);
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-30);
+    songs[id] = { ...better, attempts };
+  }
+
   const starts = [local.start, remote.start].filter((x): x is string => !!x).sort();
   return {
     ...local,
@@ -44,6 +60,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     progress,
     dialogues,
     history,
+    songs,
     installHintDismissed: local.installHintDismissed || !!remote.installHintDismissed,
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
     supported: local.supported || !!remote.supported,

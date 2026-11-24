@@ -13,6 +13,9 @@
  *   GET  /api/push/key      chave pública pra inscrever o aparelho nas notificações
  *   POST /api/push/subscribe   { endpoint, keys: { p256dh, auth } }
  *   POST /api/push/unsubscribe { endpoint }
+ *   GET  /api/music/search?q=   vídeos do YouTube (precisa da chave do YouTube no servidor)
+ *   GET  /api/music/video?url=  dados de um link do YouTube colado (sem chave)
+ *   GET  /api/music/lyrics?q=&duration=  ou  ?id=   letra sincronizada (LRCLIB)
  */
 import { z } from "zod";
 import {
@@ -22,6 +25,7 @@ import {
 import { handleChat, providerFor, type ChatAuth } from "./chat";
 import type { Db } from "./db";
 import { schedulePush, type Vapid } from "./push";
+import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInfo } from "./music";
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 
 export interface ApiConfig {
@@ -36,6 +40,8 @@ export interface ApiConfig {
   session?: Partial<SessionConfig>;
   /** Chaves das notificações; sem elas o app não oferece aviso. */
   vapid?: Vapid;
+  /** Chave da YouTube Data API pra busca na aba Música (sem ela, só colar link). */
+  youtubeKey?: string;
   /** PIX pra doações (chave, nome e cidade do recebedor). Sem chave, o app não mostra o apoio. */
   pix?: { key: string; name: string; city: string };
 }
@@ -178,6 +184,7 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         username: user.username,
         serverAi: !!serverAuthOf(cfg),
         push: !!cfg.vapid,
+        musicSearch: !!cfg.youtubeKey,
         pix: cfg.pix?.key ? cfg.pix : null,
       });
 
@@ -247,6 +254,33 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         const row2 = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
         return { session: sessionState(row2, now, sc) };
       });
+    }
+
+    case "GET /api/music/search":
+    case "GET /api/music/video":
+    case "GET /api/music/lyrics": {
+      const p = new URL(req.url).searchParams;
+      try {
+        if (route === "GET /api/music/search") {
+          if (!cfg.youtubeKey) return json({ error: "A busca precisa da chave do YouTube. Por enquanto, cole o link do vídeo.", needsKey: true }, 503);
+          const q = (p.get("q") ?? "").trim().slice(0, 120);
+          if (!q) return json({ error: "Digite o nome da música." }, 400);
+          return json({ videos: await searchVideos(q, cfg.youtubeKey) });
+        }
+        if (route === "GET /api/music/video") {
+          const id = videoIdFrom(p.get("url") ?? "");
+          if (!id) return json({ error: "Esse link não parece ser de um vídeo do YouTube." }, 400);
+          return json({ video: await videoInfo(id) });
+        }
+        const id = Number(p.get("id"));
+        const found = id > 0
+          ? await lyricsById(id)
+          : await findLyrics((p.get("q") ?? "").trim().slice(0, 160), Number(p.get("duration")) || 0);
+        return found ? json(found) : json({ error: "Não achei a letra sincronizada dessa música.", notFound: true }, 404);
+      } catch (error) {
+        if (error instanceof MusicError) return json({ error: error.message }, error.status);
+        return json({ error: "Sem conexão com o YouTube ou com o banco de letras agora." }, 502);
+      }
     }
 
     case "GET /api/push/key":

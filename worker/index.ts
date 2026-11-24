@@ -10,6 +10,7 @@ import { d1Db, type D1Database } from "../server/db";
 interface Env {
   DB: D1Database;
   GEMINI_API_KEY?: string;
+  YOUTUBE_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   SIGNUP_CODE?: string;
@@ -52,6 +53,7 @@ function config(env: Env): ApiConfig {
     db: d1Db(env.DB),
     signupCode: env.SIGNUP_CODE,
     geminiKey: env.GEMINI_API_KEY,
+    youtubeKey: env.YOUTUBE_API_KEY,
     anthropicKey: env.ANTHROPIC_API_KEY,
     openaiKey: env.OPENAI_API_KEY,
     pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,

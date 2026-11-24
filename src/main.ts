@@ -13,7 +13,7 @@ import {
   answer, createState, currentPack, ensurePractice, goToPack, knownCount, knownInPack, persist,
   startPractice, streakDays, toggleKnown, type PracticeMode, type Tab,
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
-  setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track,
+  setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track, emptyMusic, type MusicVideo,
   openDailySupport, markSupported, aiLocked,
 } from "./state";
 import { api, ApiError } from "./lib/api";
@@ -26,6 +26,9 @@ import { renderAuth, type AuthView } from "./views/auth";
 import { renderDialogue } from "./views/dialogue";
 import { renderAi } from "./views/ai";
 import { renderEvolution } from "./views/evolution";
+import { endHtml, errorHtml, lyricsHtml, optionsHtml, renderMusic, scoreHtml, syncHtml } from "./views/music";
+import { cleanTitle, lineAt, makeBlanks, parseLrc } from "./lib/lyrics";
+import { loadYouTube, YT_ERRORS, type YTPlayer } from "./lib/youtube";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
 import { renderSituations } from "./views/situations";
@@ -84,7 +87,8 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         ? await api.signup(username, password, String(f.get("code") ?? ""))
         : await api.login(username, password);
     auth.busy = false;
-    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false }));
+    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false }));
+    musicSearchOn = !!me.musicSearch;
     await start(res.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     auth.busy = false;
@@ -134,6 +138,7 @@ window.addEventListener("online", () => {
 });
 
 /** Entra no app como `user`: junta o progresso do aparelho com o da conta e desenha. */
+let musicSearchOn = false;
 async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
   setLastUser(user);
   if (online) savePix(pix);
@@ -149,6 +154,7 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     s = createState(user, new Date(), merged, serverAi, pix);
     s.canInstall = installEvent !== null;
     s.pushAvailable = push;
+    s.musicSearch = musicSearchOn;
     void checkPushOn();
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
@@ -164,6 +170,7 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
 async function boot(): Promise<void> {
   try {
     const me = await api.me();
+    musicSearchOn = !!me.musicSearch;
     await start(me.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     const cached = lastUser();
@@ -183,12 +190,22 @@ function render(): void {
   stats.innerHTML = `<button class="stats-btn" data-act="goto-evolucao" aria-label="Ver sua evolução">
     <span class="st at">${days} ${days === 1 ? "dia" : "dias"}</span><span class="st ok">${knownCount(s)}</span>${ui.chart}</button>`;
   if (s.tab === "dialogo") ensureDialogue(s);
+  // Música tocando: só atualiza as partes que mudam (redesenhar pararia o player).
+  if (s.tab === "musica" && s.music.video && player && document.getElementById("yt-player")) {
+    updateMusicParts();
+    document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
+      b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
+    );
+    sheet.innerHTML = supportSheet(s) + supportNudge(s);
+    return;
+  }
   app.innerHTML =
     s.tab === "hoje" ? renderToday(s)
     : s.tab === "dialogo" ? renderDialogue(s)
     : s.tab === "ia" ? renderAi(s)
     : s.tab === "treino" ? renderPractice(s)
     : s.tab === "evolucao" ? renderEvolution(s)
+    : s.tab === "musica" ? renderMusic(s)
     : renderSituations(s);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
@@ -199,6 +216,186 @@ function render(): void {
   sheet.innerHTML = supportSheet(s) + supportNudge(s);
   document.body.classList.toggle("sheet-open", s.support.open);
   cachePackAudio();
+  if (s.tab === "musica" && s.music.video) void mountPlayer();
+}
+
+/* ---------- música ---------- */
+let player: YTPlayer | null = null;
+let musicLoop: ReturnType<typeof setInterval> | undefined;
+let resumeAt = 0;
+
+function updateMusicParts(): void {
+  const set = (id: string, html: string) => {
+    const el = document.getElementById(id);
+    if (el && el.innerHTML !== html) el.innerHTML = html;
+  };
+  set("mus-lyrics", lyricsHtml(s));
+  set("mus-options", optionsHtml(s));
+  set("mus-score", scoreHtml(s));
+  set("mus-end", endHtml(s));
+  set("mus-err", errorHtml(s));
+  // o painel de sincronia só é refeito quando muda o ajuste (pra não fechar o <details>)
+  const sync = document.getElementById("mus-sync");
+  const off = sync?.querySelector(".sync-row .mono")?.textContent;
+  if (sync && off !== `${s.music.offset >= 0 ? "+" : ""}${s.music.offset.toFixed(1)} s`) {
+    const open = sync.querySelector("details")?.open;
+    sync.innerHTML = syncHtml(s);
+    if (open) sync.querySelector("details")?.setAttribute("open", "");
+  }
+}
+
+function destroyPlayer(): void {
+  clearInterval(musicLoop);
+  musicLoop = undefined;
+  if (player) {
+    try {
+      resumeAt = player.getCurrentTime();
+      player.destroy();
+    } catch {
+      // player ainda não estava pronto
+    }
+  }
+  player = null;
+}
+
+async function mountPlayer(): Promise<void> {
+  const v = s.music.video;
+  if (!v || player || !document.getElementById("yt-player")) return;
+  try {
+    const YT = await loadYouTube();
+    if (s.tab !== "musica" || s.music.video?.id !== v.id || player) return;
+    player = new YT.Player("yt-player", {
+      videoId: v.id,
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, start: Math.floor(resumeAt) },
+      events: {
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.ENDED) finishSong();
+        },
+        onError: (e) => {
+          s.music.error = YT_ERRORS[e.data] ?? "O vídeo não pôde ser tocado.";
+          render();
+        },
+      },
+    });
+    clearInterval(musicLoop);
+    musicLoop = setInterval(musicTick, 200);
+  } catch (e) {
+    s.music.error = e instanceof Error ? e.message : "Não deu pra carregar o player.";
+    render();
+  }
+}
+
+/** Acompanha a música: muda a linha, e pausa no fim da linha que tem lacuna sem resposta. */
+function musicTick(): void {
+  const m = s.music;
+  if (!player || !m.lines.length || m.pending || m.paused || typeof player.getCurrentTime !== "function") return;
+  const t = player.getCurrentTime() - m.offset;
+  const idx = lineAt(m.lines, t);
+  const prev = m.line;
+  if (idx !== m.line) {
+    m.line = idx;
+    updateMusicParts();
+  }
+  if (idx < 0) return;
+  const ask = (blank: (typeof m.blanks)[number]) => {
+    player!.pauseVideo();
+    m.pending = blank;
+    updateMusicParts();
+  };
+  // Passou pra linha seguinte sem pausar (a checagem atrasou): pergunta a lacuna da anterior.
+  if (idx === prev + 1 && prev >= 0) {
+    const missed = m.blanks.find((b) => b.line === prev);
+    if (missed && !m.answers[prev]) return ask(missed);
+  }
+  const blank = m.blanks.find((b) => b.line === idx);
+  if (!blank || m.answers[idx]) return;
+  const end = m.lines[idx + 1]?.t ?? m.lines[idx]!.t + 4;
+  if (t >= end - 0.35) ask(blank);
+}
+
+function finishSong(): void {
+  const m = s.music;
+  if (m.ended || !m.video) return;
+  m.ended = true;
+  const hits = Object.values(m.answers).filter((a) => a.ok).length;
+  const prev = s.data.songs[m.video.id];
+  const attempt = { date: s.today, hits, total: m.blanks.length, level: m.level };
+  const attempts = [...(prev?.attempts ?? []), attempt].slice(-30);
+  const better = !prev || hits / (m.blanks.length || 1) >= prev.best / (prev.total || 1);
+  s.data.songs[m.video.id] = better
+    ? { title: m.video.title, best: hits, total: m.blanks.length, level: m.level, date: s.today, attempts }
+    : { ...prev!, date: s.today, attempts };
+  persist(s);
+  updateMusicParts();
+}
+
+async function openVideo(v: MusicVideo): Promise<void> {
+  destroyPlayer();
+  resumeAt = 0;
+  const keep = s.music;
+  s.music = { ...emptyMusic(), query: keep.query, results: keep.results, level: keep.level, video: v };
+  render();
+  window.scrollTo(0, 0);
+  // Letra: primeiro pelo título limpo; se não achar, título + canal.
+  const tries = [cleanTitle(v.title), `${cleanTitle(v.title)} ${v.channel.replace(/\s*-\s*Topic$|VEVO$/i, "")}`];
+  for (const q of tries) {
+    try {
+      const r = await fetch(`./api/music/lyrics?q=${encodeURIComponent(q)}&duration=${v.duration}`);
+      const d = (await r.json()) as { lrc?: string; chosen?: never; candidates?: never; error?: string; notFound?: boolean };
+      if (r.ok && d.lrc) return applyLyrics(d.lrc, d as never);
+      if (!d.notFound) throw new Error(d.error);
+    } catch (e) {
+      s.music.error = e instanceof Error && e.message ? e.message : "Sem conexão pra buscar a letra.";
+      return render();
+    }
+  }
+  s.music.error = "Não achei a letra sincronizada dessa música. Tente outro vídeo (o oficial ou com letra) ou outra música.";
+  render();
+}
+
+function applyLyrics(lrc: string, meta: { chosen: never; candidates?: never }): void {
+  const m = s.music;
+  m.lines = parseLrc(lrc);
+  m.blanks = makeBlanks(m.lines, m.level, m.video!.id);
+  m.lyrics = { chosen: meta.chosen, candidates: meta.candidates ?? m.lyrics?.candidates ?? [meta.chosen] };
+  m.answers = {};
+  m.pending = null;
+  m.error = null;
+  m.line = -1;
+  updateMusicParts();
+}
+
+async function musicSearch(raw: string): Promise<void> {
+  const m = s.music;
+  const q = raw.trim();
+  m.query = q;
+  if (!q) return;
+  m.loading = true;
+  m.error = null;
+  render();
+  try {
+    const isLink = /youtu\.?be|^[\w-]{11}$/.test(q);
+    if (isLink || !s.musicSearch) {
+      const r = await fetch(`./api/music/video?url=${encodeURIComponent(q)}`);
+      const d = (await r.json()) as { video?: MusicVideo; error?: string };
+      m.loading = false;
+      if (!r.ok || !d.video) {
+        m.error = !s.musicSearch && !isLink ? "Cole o link de um vídeo do YouTube (a busca por nome ainda não está ligada)." : (d.error ?? "Vídeo não encontrado.");
+        return render();
+      }
+      return openVideo(d.video);
+    }
+    const r = await fetch(`./api/music/search?q=${encodeURIComponent(q)}`);
+    const d = (await r.json()) as { videos?: MusicVideo[]; error?: string };
+    m.loading = false;
+    if (!r.ok) m.error = d.error ?? "Não deu pra buscar agora.";
+    m.results = d.videos ?? [];
+    if (r.ok && !m.results.length) m.error = "Nada encontrado. Tente o nome da música e do artista.";
+  } catch {
+    m.loading = false;
+    m.error = "Sem conexão pra buscar agora.";
+  }
+  render();
 }
 
 /** Pede ao service worker pra guardar os áudios do pacote aberto (fica disponível offline). */
@@ -247,6 +444,7 @@ function toast(msg: string, ok = false): void {
 }
 
 function setTab(tab: Tab): void {
+  if (s.tab === "musica" && tab !== "musica") destroyPlayer();
   cancelListening();
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
@@ -543,6 +741,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   logout: () => void logout(),
   "goto-dialogo": () => setTab("dialogo"),
   "goto-evolucao": () => setTab("evolucao"),
+  "goto-musica": () => setTab("musica"),
   "goto-hoje": () => setTab("hoje"),
   "goto-ia": () => setTab("ia"),
 
@@ -573,6 +772,80 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "dl-restart": () => { const revealed = startDialogue(s); render(); window.scrollTo(0, 0); playLines(revealed); },
 
   "ai-start": () => void sendToAi(""),
+
+  "music-level": (el) => {
+    s.music.level = el.dataset.level as typeof s.music.level;
+    if (s.music.lines.length && s.music.video) s.music.blanks = makeBlanks(s.music.lines, s.music.level, s.music.video.id);
+    render();
+  },
+  "music-pick": (el) => {
+    const v = s.music.results.find((x) => x.id === el.dataset.id);
+    if (v) void openVideo(v);
+  },
+  "music-pick-recent": (el) => void musicSearch(el.dataset.id!),
+  "music-back": () => {
+    destroyPlayer();
+    resumeAt = 0;
+    s.music = { ...emptyMusic(), query: s.music.query, results: s.music.results, level: s.music.level };
+    render();
+  },
+  "music-answer": (el) => {
+    const m = s.music;
+    const b = m.pending;
+    if (!b) return;
+    const ok = el.dataset.word === b.answer;
+    m.answers[b.line] = { chosen: el.dataset.word!, ok };
+    m.pending = null;
+    track(s, { listen: 1, listenHits: ok ? 1 : 0 });
+    persist(s);
+    if (ok) {
+      toast("Isso!", true);
+      updateMusicParts();
+      setTimeout(() => player?.playVideo(), 500);
+    } else {
+      m.paused = true;
+      updateMusicParts();
+    }
+  },
+  "music-continue": () => {
+    s.music.paused = false;
+    updateMusicParts();
+    player?.playVideo();
+  },
+  "music-replay": (el) => {
+    const m = s.music;
+    const line = m.lines[Number(el.dataset.line)];
+    if (!line || !player) return;
+    m.pending = null;
+    m.paused = false;
+    // Se ainda não respondeu, a música pausa de novo no fim da linha.
+    player.seekTo(Math.max(0, line.t + m.offset - 0.6), true);
+    player.playVideo();
+    updateMusicParts();
+  },
+  "music-say": (el) => speakTts(el.dataset.word!),
+  "music-offset": (el) => {
+    s.music.offset = Math.round((s.music.offset + Number(el.dataset.delta)) * 10) / 10;
+    updateMusicParts();
+  },
+  "music-mark": () => {
+    const first = s.music.lines[0];
+    if (!player || !first) return;
+    s.music.offset = Math.round((player.getCurrentTime() - first.t) * 10) / 10;
+    toast("Sincronia ajustada", true);
+    updateMusicParts();
+  },
+  "music-restart": () => {
+    const m = s.music;
+    m.answers = {};
+    m.ended = false;
+    m.pending = null;
+    m.paused = false;
+    m.line = -1;
+    player?.seekTo(0, true);
+    player?.playVideo();
+    updateMusicParts();
+  },
   "ai-mode": (el) => {
     const free = el.dataset.free === "1";
     s.ai = { free, packIndex: s.packIndex, messages: [], loading: false, error: null, draft: "", openPt: new Set() };
@@ -731,10 +1004,25 @@ document.addEventListener("submit", (e) => {
     toast("Chave salva neste aparelho", true);
     return;
   }
+  if (form.dataset.form === "music-search") {
+    void musicSearch((document.getElementById("music-q") as HTMLInputElement | null)?.value ?? "");
+    return;
+  }
   if (form.dataset.form === "ai-send") {
     const value = (document.getElementById("ai-input") as HTMLTextAreaElement | null)?.value ?? "";
     if (value.trim()) void sendToAi(value);
   }
+});
+
+document.addEventListener("change", (e) => {
+  const el = e.target as HTMLSelectElement;
+  if (el.id !== "music-lyrics" || !s) return;
+  void (async () => {
+    const r = await fetch(`./api/music/lyrics?id=${encodeURIComponent(el.value)}`);
+    const d = (await r.json()) as { lrc?: string; chosen?: never; error?: string };
+    if (r.ok && d.lrc) applyLyrics(d.lrc, d as never);
+    else toast(d.error ?? "Não deu pra trocar a letra.");
+  })();
 });
 
 document.addEventListener("input", (e) => {

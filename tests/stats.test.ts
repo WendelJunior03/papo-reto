@@ -51,3 +51,45 @@ describe("evolução", () => {
     expect(badges({ known: 0, studyDays: 0, packsDone: 9, dialogues: 0, perfect: false, aiMsgs: 0 }).find((x) => x.id === "packs")!.left).toBe("falta 1 pacote");
   });
 });
+
+import { listeningSummary, listenSeries, songProgress } from "../src/lib/stats";
+import { mergeData as merge2 } from "../src/lib/merge";
+
+describe("ouvido (música)", () => {
+  const data = {
+    ...emptyData(),
+    history: {
+      "2026-11-10": day({ listen: 10, listenHits: 5 }),
+      "2026-11-18": day({ listen: 10, listenHits: 7 }),
+      "2026-11-19": day({ listen: 10, listenHits: 9 }),
+    },
+    songs: {
+      jireh: { title: "Jireh", best: 9, total: 10, level: "facil", date: "2026-11-19",
+        attempts: [{ date: "2026-11-10", hits: 5, total: 10, level: "facil" }, { date: "2026-11-19", hits: 9, total: 10, level: "facil" }] },
+      antiga: { title: "Sem tentativas guardadas", best: 3, total: 4, level: "medio", date: "2026-11-01" },
+    },
+  };
+  test("acerto geral e da semana comparado com a anterior", () => {
+    const ls = listeningSummary(data, "2026-11-19");
+    expect(ls.pct).toBeCloseTo(0.7);
+    expect(ls.now).toEqual({ answered: 20, pct: 0.8 });
+    expect(ls.before).toEqual({ answered: 10, pct: 0.5 });
+    expect(ls.songs).toBe(2);
+  });
+  test("série diária de acerto", () => {
+    expect(listenSeries(data, "2026-11-19").map((p) => p.value)).toEqual([0.5, 0.7, 0.9]);
+  });
+  test("comparativo por música: primeira, última e melhor (e músicas antigas sem tentativas)", () => {
+    const [j, a] = songProgress(data);
+    expect(j).toMatchObject({ title: "Jireh", attempts: 2, first: 0.5, last: 0.9, best: 0.9 });
+    expect(a).toMatchObject({ attempts: 1, first: 0.75, last: 0.75 });
+  });
+  test("tentativas de dois aparelhos se juntam sem repetir", () => {
+    const a1 = { date: "2026-11-10", hits: 5, total: 10, level: "facil" };
+    const a2 = { date: "2026-11-19", hits: 9, total: 10, level: "facil" };
+    const m = merge2({ ...emptyData(), songs: { j: { title: "J", best: 5, total: 10, level: "facil", date: "2026-11-10", attempts: [a1] } } },
+      { songs: { j: { title: "J", best: 9, total: 10, level: "facil", date: "2026-11-19", attempts: [a1, a2] } } });
+    expect(m.songs.j!.attempts).toEqual([a1, a2]);
+    expect(m.songs.j!.best).toBe(9);
+  });
+});

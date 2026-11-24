@@ -8,8 +8,8 @@ import { parseKey } from "../lib/dates";
 import { esc, highlight } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import {
-  badges, daysThisMonth, heatmap, knownSeries, levelFor, longestStreak, MEMORY, memoryBuckets,
-  spokenSeries, weekSummary, type Point,
+  badges, daysThisMonth, heatmap, knownSeries, levelFor, listeningSummary, listenSeries, longestStreak, MEMORY,
+  memoryBuckets, songProgress, spokenSeries, weekSummary, type Point, type SongProgress,
 } from "../lib/stats";
 import { ui } from "../icons";
 import { knownCount, knownInPack, streakDays, type AppState } from "../state";
@@ -63,6 +63,28 @@ function lineChart(points: Point[], opts: { max: number; fmt: (v: number) => str
     </svg>
     <div class="tip" hidden></div>
   </div>`;
+}
+
+const LEVEL_NAME: Record<string, string> = { facil: "fácil", medio: "médio", dificil: "difícil" };
+
+/** Uma música: régua 0–100% com a primeira tentativa (claro) e a última (escuro). */
+function songRow(p: SongProgress): string {
+  const x = (v: number) => (8 + v * 384).toFixed(1);
+  const diff = Math.round((p.last - p.first) * 100);
+  const trend = p.attempts < 2 ? `<span class="delta">1 tentativa</span>` : diff === 0 ? `<span class="delta">= primeira vez</span>` : `<span class="delta ${diff > 0 ? "up" : "down"}">${diff > 0 ? "▲" : "▼"} ${Math.abs(diff)} pts</span>`;
+  return `<li>
+    <div class="ear-top"><b>${esc(p.title)}</b>${trend}</div>
+    <div class="chart ear-chart" data-chart>
+      <svg viewBox="0 0 400 22" role="img" aria-label="${esc(`${p.title}: primeira ${pct(p.first)}, última ${pct(p.last)}, melhor ${pct(p.best)}`)}">
+        <line class="grid" x1="8" x2="392" y1="11" y2="11"/>
+        ${p.attempts > 1 ? `<line class="ear-link" x1="${x(p.first)}" x2="${x(p.last)}" y1="11" y2="11"/>` : ""}
+        ${p.attempts > 1 ? `<circle class="ear-first" cx="${x(p.first)}" cy="11" r="5" data-tip="Primeira vez: ${pct(p.first)}"/>` : ""}
+        <circle class="ear-last" cx="${x(p.last)}" cy="11" r="6" data-tip="Última: ${pct(p.last)} (nível ${LEVEL_NAME[p.lastLevel] ?? p.lastLevel})"/>
+      </svg>
+      <div class="tip" hidden></div>
+    </div>
+    <small>${p.attempts > 1 ? `1ª vez ${pct(p.first)} → última ${pct(p.last)} · ` : `${pct(p.last)} · `}melhor ${pct(p.best)} · ${p.attempts} ${p.attempts === 1 ? "tentativa" : "tentativas"} · nível ${LEVEL_NAME[p.lastLevel] ?? p.lastLevel}</small>
+  </li>`;
 }
 
 export function renderEvolution(s: AppState): string {
@@ -172,11 +194,38 @@ export function renderEvolution(s: AppState): string {
     }
   </div>`;
 
+  /* ouvido (música) */
+  const ls = listeningSummary(d, s.today);
+  const lseries = listenSeries(d, s.today, 60);
+  const prog = songProgress(d);
+  const ear = `<div class="evo-card">
+    <div class="evo-head"><span class="eyebrow">Seu ouvido · Música</span><span class="mono">${ls.songs} ${ls.songs === 1 ? "música" : "músicas"}</span></div>
+    ${
+      ls.answered
+        ? `<div class="tiles">
+            <div class="tile-s"><span class="lab">Acerto geral</span><b>${pct(ls.pct!)}</b><span class="delta">${ls.hits} de ${ls.answered} lacunas</span></div>
+            <div class="tile-s"><span class="lab">Últimos 7 dias</span><b>${ls.now.pct === null ? "—" : pct(ls.now.pct)}</b>${delta(ls.now.pct, ls.before.pct, "", true) || `<span class="delta">${ls.now.answered} lacunas</span>`}</div>
+          </div>
+          ${
+            lseries.length >= 2
+              ? lineChart(lseries, { max: 1, fmt: pct, label: "de acerto", target: { value: 0.8, label: "ouvido afiado" } })
+              : `<p class="evo-hint">Treine em outros dias pra ver a linha da sua evolução no ouvido.</p>`
+          }
+          ${prog.length ? `<span class="mono ear-sub">Primeira vez → última, por música</span><ul class="ear-songs">${prog.slice(0, 8).map(songRow).join("")}</ul>` : ""}
+          <p class="evo-hint">Repetir a mesma música é o que treina o ouvido: na segunda e na terceira vez as palavras começam a aparecer sozinhas.</p>`
+        : `<p class="evo-empty">Faça o treino de ouvido na aba Música pra acompanhar quanto você entende das letras.</p>
+           <button class="btn btn-am" data-act="goto-musica">Treinar com música</button>`
+    }
+  </div>`;
+
   /* conquistas */
   const packsDone = packs.filter((_, i) => knownInPack(s, i) === 5).length;
   const dialogueScores = Object.values(d.dialogues);
   const aiMsgs = Object.values(d.history).reduce((n, h) => n + h.ai, 0);
-  const list = badges({ known, studyDays, packsDone, dialogues: dialogueScores.length, perfect: dialogueScores.some((x) => x.best >= 0.999), aiMsgs });
+  const list = badges({
+    known, studyDays, packsDone, dialogues: dialogueScores.length, perfect: dialogueScores.some((x) => x.best >= 0.999), aiMsgs,
+    songs: prog.length, bestSong: Math.max(0, ...prog.map((p) => p.best)),
+  });
   const earned = list.filter((b) => b.done).length;
   const badgeCard = `<div class="evo-card">
     <div class="evo-head"><span class="eyebrow">Conquistas</span><span class="mono">${earned} de ${list.length}</span></div>
@@ -217,7 +266,7 @@ export function renderEvolution(s: AppState): string {
     <div class="wrap evo-top"><button class="link-btn subtle" data-act="goto-hoje">${ui.back}Voltar</button></div>
     ${hero}
     <section class="band"><div class="wrap evo-grid">
-      ${weekCard}${habit}${memory}${growth}${speak}${badgeCard}${collection}
+      ${weekCard}${habit}${memory}${growth}${speak}${ear}${badgeCard}${collection}
     </div></section>
   </div>`;
 }
