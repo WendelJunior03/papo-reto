@@ -46,6 +46,7 @@ export const ui = {
   arrow: svg(`<path d="M5 12h14M13 6l6 6-6 6"/>`),
   back: svg(`<path d="M19 12H5M11 6l-6 6 6 6"/>`),
   mic: svg(`<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>`),
+  music: svg(`<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>`),
   ear: svg(`<path d="M7 9a5 5 0 0 1 10 0c0 3-3 4-3 7a3 3 0 0 1-6 0"/><path d="M10 9a2 2 0 0 1 4 0"/>`),
   flip: svg(`<path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"/>`),
   download: svg(`<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>`),

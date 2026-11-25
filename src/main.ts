@@ -8,6 +8,7 @@ import { plain } from "./lib/html";
 import { packs } from "./data";
 import { audioFile } from "./lib/spoken";
 import { buildReminderICS, downloadReminder } from "./lib/reminder";
+import { canPush, isIOS, isStandalone } from "./lib/device";
 import { ui } from "./icons";
 import {
   answer, createState, currentPack, ensurePractice, goToPack, knownCount, knownInPack, persist,
@@ -28,6 +29,7 @@ import { renderAi } from "./views/ai";
 import { renderEvolution } from "./views/evolution";
 import { endHtml, errorHtml, lyricsHtml, optionsHtml, renderMusic, scoreHtml, syncHtml } from "./views/music";
 import { cleanTitle, lineAt, makeBlanks, parseLrc } from "./lib/lyrics";
+import { earAnswer } from "./lib/ear";
 import { loadYouTube, YT_ERRORS, type YTPlayer } from "./lib/youtube";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
@@ -38,6 +40,7 @@ import {
   carStatus, jump as carJump, loadPlaylist, onCarChange, play as carPlay, setAwake, setSlow, skip as carSkip,
   stopCar, toggle as carToggle, wakeLockAvailable,
 } from "./lib/carplayer";
+import { renderAdmin } from "./views/admin";
 
 let s!: AppState;
 const app = document.getElementById("app")!;
@@ -93,8 +96,9 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         ? await api.signup(username, password, String(f.get("code") ?? ""))
         : await api.login(username, password);
     auth.busy = false;
-    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false }));
+    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false, admin: false }));
     musicSearchOn = !!me.musicSearch;
+    adminOn = !!me.admin;
     await start(res.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     auth.busy = false;
@@ -145,6 +149,8 @@ window.addEventListener("online", () => {
 
 /** Entra no app como `user`: junta o progresso do aparelho com o da conta e desenha. */
 let musicSearchOn = false;
+/** Dono do app (do /api/me). Só mostra o botão do painel; o servidor confere de novo. */
+let adminOn = false;
 async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
   setLastUser(user);
   if (online) savePix(pix);
@@ -152,16 +158,23 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
   s = createState(user, new Date(), undefined, serverAi, pix);
   s.canInstall = installEvent !== null;
   s.pushAvailable = push;
+  s.admin = online && adminOn;
+  if (s.tab === "admin" && !s.admin) s.tab = "hoje";
   render();
+  if (s.tab === "admin") void loadAdmin();
   if (!online) return;
   try {
     const remote = await api.getProgress();
     const merged = mergeData(load(user), remote.data);
+    const { tab, adminPanel } = s;
     s = createState(user, new Date(), merged, serverAi, pix);
+    s.tab = tab;
+    s.adminPanel = adminPanel;
     s.canInstall = installEvent !== null;
     s.pushAvailable = push;
     s.musicSearch = musicSearchOn;
-    void checkPushOn();
+    s.admin = adminOn;
+    void checkPushOn().then(loadReminder);
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
     // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou).
@@ -177,6 +190,7 @@ async function boot(): Promise<void> {
   try {
     const me = await api.me();
     musicSearchOn = !!me.musicSearch;
+    adminOn = !!me.admin;
     await start(me.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     const cached = lastUser();
@@ -214,6 +228,7 @@ function render(): void {
     : s.tab === "evolucao" ? renderEvolution(s)
     : s.tab === "musica" ? renderMusic(s)
     : s.tab === "ouvir" ? renderListen(s, carStatus(), wakeLockAvailable)
+    : s.tab === "admin" && s.admin ? renderAdmin(s)
     : renderSituations(s);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
@@ -477,6 +492,8 @@ function toast(msg: string, ok = false): void {
 function setTab(tab: Tab): void {
   if (s.tab === "musica" && tab !== "musica") destroyPlayer();
   if (s.tab === "ouvir" && tab !== "ouvir") stopCar();
+  // A senha temporária aparece uma vez só: saiu do painel, some.
+  if (s.tab === "admin" && tab !== "admin" && s.adminPanel) s.adminPanel = { ...s.adminPanel, temp: null, confirm: null };
   cancelListening();
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
@@ -484,9 +501,42 @@ function setTab(tab: Tab): void {
   history.replaceState(null, "", tab === "hoje" ? location.pathname : `#${tab}`);
   const revealed = tab === "dialogo" ? ensureDialogue(s) : [];
   if (tab === "ia") void refreshAiSession();
+  if (tab === "admin") void loadAdmin();
   render();
   window.scrollTo(0, 0);
   playLines(revealed);
+}
+
+/* ---------- painel do dono ---------- */
+async function loadAdmin(): Promise<void> {
+  if (!s.admin) return;
+  const prev = s.adminPanel;
+  s.adminPanel = { loading: true, error: null, stats: prev?.stats ?? null, users: prev?.users ?? [], confirm: null, busy: false, temp: prev?.temp ?? null };
+  render();
+  try {
+    const [stats, list] = await Promise.all([api.adminStats(), api.adminUsers()]);
+    s.adminPanel = { ...s.adminPanel, loading: false, stats, users: list.users };
+  } catch (e) {
+    s.adminPanel = { ...s.adminPanel, loading: false, error: e instanceof ApiError ? e.message : "Não deu pra carregar o painel." };
+  }
+  if (s.tab === "admin") render();
+}
+
+async function resetUserPassword(username: string): Promise<void> {
+  const p = s.adminPanel;
+  if (!p || p.busy) return;
+  p.busy = true;
+  p.error = null;
+  render();
+  try {
+    const r = await api.adminReset(username);
+    p.temp = { username: r.username, password: r.password };
+    p.confirm = null;
+  } catch (e) {
+    p.error = e instanceof ApiError ? e.message : "Não deu pra gerar a senha.";
+  }
+  p.busy = false;
+  if (s.tab === "admin") render();
 }
 
 /* ---------- diálogo guiado ---------- */
@@ -615,31 +665,83 @@ async function swRegistration(): Promise<ServiceWorkerRegistration | null> {
 }
 
 async function checkPushOn(): Promise<void> {
-  if (!s?.pushAvailable || !("PushManager" in window)) return;
+  if (!s?.pushAvailable || !canPush()) return;
   const reg = await swRegistration();
   s.pushOn = !!(await reg?.pushManager.getSubscription());
 }
 
-async function enablePush(): Promise<void> {
-  const standalone =
-    matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  if (!("PushManager" in window) || !("Notification" in window)) {
-    return toast(/iPhone|iPad/.test(navigator.userAgent) && !standalone
+/** Pede permissão e inscreve este aparelho nas notificações. Devolve false (com aviso) se não deu. */
+async function subscribePush(): Promise<boolean> {
+  if (!canPush()) {
+    toast(isIOS() && !isStandalone()
       ? "No iPhone, instale o app na Tela de Início pra receber avisos"
       : "Este navegador não recebe notificações");
+    return false;
   }
-  if ((await Notification.requestPermission()) !== "granted") return toast("Sem permissão pra notificar. Dá pra liberar nos ajustes do navegador.");
+  if ((await Notification.requestPermission()) !== "granted") {
+    toast("Sem permissão pra notificar. Dá pra liberar nos ajustes do navegador.");
+    return false;
+  }
   try {
     const reg = await swRegistration();
-    if (!reg) return toast("Abra o app instalado pra ativar os avisos");
+    if (!reg) {
+      toast("Abra o app instalado pra ativar os avisos");
+      return false;
+    }
     const { publicKey } = await api.pushKey();
     const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) }));
     await api.pushSubscribe(sub.toJSON());
     s.pushOn = true;
-    render();
-    toast("Pronto! Te avisamos quando liberar.", true);
+    return true;
   } catch {
     toast("Não deu pra ativar os avisos agora. Tenta de novo.");
+    return false;
+  }
+}
+
+async function enablePush(): Promise<void> {
+  if (!(await subscribePush())) return;
+  render();
+  toast("Pronto! Te avisamos quando liberar.", true);
+}
+
+/* ---------- lembrete diário ---------- */
+async function loadReminder(): Promise<void> {
+  if (!s?.pushAvailable || !canPush()) return;
+  try {
+    s.reminder = await api.getReminder();
+    if (s.reminder?.enabled) s.data.reminderTime = s.reminder.time;
+    if (s.tab === "hoje") render();
+  } catch {
+    // sem conexão: o cartão mostra o botão de ativar
+  }
+}
+
+/** Ativa (ou muda o horário do) lembrete: inscreve o aparelho e salva no servidor com o fuso daqui. */
+async function enableReminder(): Promise<void> {
+  const input = document.getElementById("reminder-time") as HTMLInputElement | null;
+  const time = input?.value || s.data.reminderTime;
+  if (!(await subscribePush())) return;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+    s.reminder = await api.putReminder({ time, tz, enabled: true });
+    s.data.reminderTime = time;
+    persist(s);
+    render();
+    toast(`Lembrete às ${time} ativado`, true);
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : "Não deu pra salvar o lembrete agora.");
+  }
+}
+
+async function disableReminder(): Promise<void> {
+  if (!s.reminder) return;
+  try {
+    s.reminder = await api.putReminder({ ...s.reminder, enabled: false });
+    render();
+    toast("Lembrete desativado");
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : "Não deu pra desativar agora.");
   }
 }
 
@@ -767,7 +869,16 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   today: () => { goToPack(s, s.todayIndex); render(); },
   chatpt: () => { s.showChatPt = !s.showChatPt; render(); },
   saychat: () => playSequence(currentPack(s).chat.map((c) => c.en)),
-  "goto-treino": () => setTab("treino"),
+  "goto-treino": () => {
+    // O aviso de revisões é de frases: abre no modo Falar, mesmo que o último usado tenha sido Músicas.
+    if (s.practice?.mode === "musica") startPractice(s, "falar");
+    setTab("treino");
+  },
+  "goto-treino-musica": () => {
+    startPractice(s, "musica");
+    setTab("treino");
+    playCurrent();
+  },
   "dismiss-ios": () => { s.data.installHintDismissed = true; persist(s); render(); },
   pick: (el) => { goToPack(s, Number(el.dataset.pack)); setTab("hoje"); },
   logout: () => void logout(),
@@ -776,6 +887,28 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "goto-musica": () => setTab("musica"),
   "goto-hoje": () => setTab("hoje"),
   "goto-ia": () => setTab("ia"),
+  "goto-situacoes": () => setTab("situacoes"),
+  "goto-admin": () => setTab("admin"),
+  "admin-reload": () => void loadAdmin(),
+  "admin-reset": (el) => {
+    if (!s.adminPanel) return;
+    s.adminPanel.confirm = el.dataset.user ?? null;
+    s.adminPanel.error = null;
+    render();
+  },
+  "admin-reset-cancel": () => {
+    if (s.adminPanel) s.adminPanel.confirm = null;
+    render();
+  },
+  "admin-reset-go": (el) => void resetUserPassword(el.dataset.user!),
+  "admin-copy": () => {
+    const t = s.adminPanel?.temp;
+    if (t) void copy(t.password, "Senha copiada", "admin-temp");
+  },
+  "admin-temp-close": () => {
+    if (s.adminPanel) s.adminPanel.temp = null;
+    render();
+  },
 
   /* ouvir no carro: o toque de abrir já dá o play (no iPhone o áudio só começa a partir de um toque) */
   "listen-open": (el) => {
@@ -854,6 +987,11 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     const ok = el.dataset.word === b.answer;
     m.answers[b.line] = { chosen: el.dataset.word!, ok };
     m.pending = null;
+    // Errou: a palavra vira revisão no Treinar; acertou depois: conta como acerto lá.
+    const line = m.lines[b.line];
+    if (line && m.video) {
+      earAnswer(s.data.earWords, { word: b.answer, line: line.text, title: cleanTitle(m.video.title) || m.video.title, videoId: m.video.id, t: line.t }, ok, s.today);
+    }
     track(s, { listen: 1, listenHits: ok ? 1 : 0 });
     persist(s);
     if (ok) {
@@ -910,6 +1048,8 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     render();
   },
   "ai-notify": () => void enablePush(),
+  "reminder-on": () => void enableReminder(),
+  "reminder-off": () => void disableReminder(),
 
   "support-open": () => { s.support = { open: true, amount: 0, nudge: null, daily: false }; render(); },
   "support-done": () => { markSupported(s); render(); toast("Muito obrigado pelo apoio!", true); },
@@ -959,7 +1099,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   mode: (el) => {
     const pr = startPractice(s, el.dataset.mode as PracticeMode);
     render();
-    if (pr.mode === "ouvir") playCurrent();
+    if (pr.mode !== "falar") playCurrent();
   },
   reveal: () => {
     const pr = ensurePractice(s);
@@ -972,12 +1112,17 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "slow-card": () => playCurrent(true),
   hit: () => next(true),
   miss: () => next(false),
-  restart: () => { startPractice(s); render(); if (s.practice?.mode === "ouvir") playCurrent(); },
+  restart: () => { startPractice(s); render(); if (s.practice?.mode !== "falar") playCurrent(); },
 };
 
 function playCurrent(slow = false): void {
   const pr = s.practice;
   const id = pr?.deck[pr.pos];
+  // Palavra de música não tem áudio gravado: vai na voz do aparelho.
+  if (pr?.mode === "musica") {
+    const ear = id ? s.data.earWords[id] : undefined;
+    return void (ear && speakTts(ear.word, slow));
+  }
   const p = id ? findPhrase(id) : undefined;
   if (p) play(p.en, slow);
 }
@@ -987,7 +1132,7 @@ function next(hit: boolean): void {
   answer(s, hit);
   checkKnownMilestone(before);
   render();
-  if (s.practice?.mode === "ouvir") playCurrent();
+  if (s.practice?.mode !== "falar") playCurrent();
 }
 
 /* ---------- detalhe dos gráficos (passar o mouse ou tocar) ---------- */

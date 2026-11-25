@@ -30,6 +30,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Música** — treino de ouvido: busca (ou cola o link de) um vídeo do YouTube, a letra sincronizada vem do LRCLIB e algumas palavras somem. No fim da linha a música pausa e você escolhe entre 4 opções parecidas; dá pra ouvir a palavra, repetir o trecho e ajustar a sincronia. Três níveis.
 - **Ouvir no carro** (botão no Hoje e em Situações) — modo podcast, sem olhar pra tela: cada frase em inglês, a tradução, o inglês de novo pra repetir junto e, no fim, a cena. Fonte: pacote de hoje, pacote aberto ou revisão (as 15 frases dominadas mais recentes); "Inglês + português" ou "Só inglês"; velocidade normal ou mais devagar. Toca com a tela bloqueada: tudo é arquivo de áudio encadeado num único `<audio>` (até as pausas, que são arquivos de silêncio), com Media Session pros botões da tela de bloqueio, do fone e do carro.
 - **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
+- **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio. *Músicas*: as palavras que você errou na aba Música, com o trecho da letra e a palavra na voz do aparelho (acertar a palavra numa música depois também conta).
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
 - **Sua evolução** (toque nos números do topo) — nível pelas frases dominadas, resumo da semana vs. a anterior, mapa de constância de 16 semanas, força da memória (caixas da repetição espaçada), gráficos de frases dominadas e da nota da fala nos diálogos, conquistas e a coleção das últimas expressões. Um histórico diário é salvo e sincronizado com a conta.
@@ -58,6 +59,10 @@ O app exige login (usuário e senha). Banco **SQLite**: no Mac é o arquivo `dat
 
 Configuração local: o Bun lê o `.env` sozinho (veja `.env.example`).
 
+### Painel do dono
+
+Quem estiver em `ADMIN_USERS` (usuários separados por vírgula, sem diferenciar maiúscula) vê o botão **Painel do dono** no card da conta (aba Situações): usuários, ativos hoje/7/30 dias, mensagens com a IA do app (o custo do Gemini), apoiadores, inscritos em notificação, gráficos de cadastros e de mensagens por dia e a lista de usuários. Como o app não tem "esqueci a senha", o painel gera uma **senha temporária** (mostrada uma única vez) e derruba as sessões abertas da pessoa. As rotas `/api/admin/*` conferem o dono no servidor (403 pra quem não é). Precisa da migração `0005_admin.sql` (tabela `user_activity` e índice em `ai_usage`).
+
 O `wrangler` fica fixo no projeto (`devDependencies`, versão exata) pra o build do Cloudflare e o Mac usarem a mesma versão.
 
 Publicar no Cloudflare:
@@ -78,6 +83,7 @@ bun run build && bunx wrangler deploy
 - Modelos do Gemini: tenta `gemini-3.8-flash` e cai pro `gemini-3.5-flash-lite` se estiver sobrecarregado.
 - **Chave própria** (Gemini `AIza…`, OpenAI `sk-…` ou Anthropic `sk-ant-…`) colada na aba IA: sem limite de sessão, cobrada na conta da pessoa. Fica só no aparelho e vai por HTTPS a cada mensagem; o servidor não guarda.
 - Notificações: o cron do Worker (a cada minuto) envia os avisos agendados. No iPhone, só com o app instalado na Tela de Início (iOS 16.4+).
+- **Lembrete diário** (aba Hoje): a pessoa escolhe o horário e o app manda "Seu pacote do dia chegou!" (com quantas revisões estão esperando) no fuso do aparelho, uma vez por dia (`server/reminders.ts`). O push vai sem conteúdo; o service worker busca o texto em `/api/push/latest`. Sem notificação (iPhone sem instalar, navegador sem push), fica o lembrete no calendário (.ics). Tabelas em `migrations/0004_reminders.sql`. No Mac, `bun dev`/`bun preview` imitam o cron (`scripts/cron.ts`) quando há chaves VAPID no `.env`.
 
 Configuração (`.env` local ou `bunx wrangler secret put …`): `GEMINI_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gerar com `generateVapid()` de `server/push.ts`).
 

@@ -30,7 +30,10 @@ function delta(now: number | null, before: number | null, unit = "", asPct = fal
 }
 
 /* ---------- gráfico de linha (uma série) ---------- */
-function lineChart(points: Point[], opts: { max: number; fmt: (v: number) => string; label: string; target?: { value: number; label: string } }): string {
+export function lineChart(
+  points: Point[],
+  opts: { max: number; fmt: (v: number) => string; label: string; one?: string; target?: { value: number; label: string } },
+): string {
   const W = 320, H = 150, L = 34, R = 10, T = 12, B = 24;
   const iw = W - L - R, ih = H - T - B;
   const x = (i: number) => L + (points.length === 1 ? iw / 2 : (i / (points.length - 1)) * iw);
@@ -42,7 +45,7 @@ function lineChart(points: Point[], opts: { max: number; fmt: (v: number) => str
   const step = points.length > 1 ? iw / (points.length - 1) : iw;
   const hits = points
     .map((p, i) => `<rect class="hit" x="${(x(i) - step / 2).toFixed(1)}" y="${T}" width="${step.toFixed(1)}" height="${ih}"
-      data-tip="${esc(`${fmtDay(p.date)} · ${opts.fmt(p.value)} ${p.value === 1 ? opts.label.replace(/s$/, "") : opts.label}`)}" data-cx="${x(i).toFixed(1)}" data-cy="${y(p.value).toFixed(1)}"/>`)
+      data-tip="${esc(`${fmtDay(p.date)} · ${opts.fmt(p.value)} ${p.value === 1 ? (opts.one ?? opts.label.replace(/s$/, "")) : opts.label}`)}" data-cx="${x(i).toFixed(1)}" data-cy="${y(p.value).toFixed(1)}"/>`)
     .join("");
   const xLabels = [0, Math.floor((points.length - 1) / 2), points.length - 1]
     .filter((v, i, a) => a.indexOf(v) === i)
