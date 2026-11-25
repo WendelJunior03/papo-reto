@@ -11,6 +11,8 @@ import { audioFile, spokenText } from "./spoken";
 const player = typeof Audio !== "undefined" ? new Audio() : null;
 let queue: string[] = [];
 let queueSlow = false;
+/** Fila só com a voz do aparelho (texto gerado, sem arquivo gravado: não tenta baixar o áudio). */
+let ttsOnly = false;
 
 export const speechAvailable = typeof window !== "undefined" && "speechSynthesis" in window;
 
@@ -22,6 +24,7 @@ export function playSequence(texts: string[], slow = false): void {
   stop();
   queue = [...texts];
   queueSlow = slow;
+  ttsOnly = false;
   next();
 }
 
@@ -41,7 +44,7 @@ let seq = 0;
 function next(): void {
   const text = queue.shift();
   if (text === undefined) return;
-  if (!player) return fallback(text);
+  if (!player || ttsOnly) return fallback(text);
 
   const token = ++seq;
   const fail = (): void => {
@@ -63,6 +66,15 @@ export function speakTts(text: string, slow = false): void {
   stop();
   queueSlow = slow;
   fallback(text);
+}
+
+/** Vários textos sem arquivo gravado (ex.: historinha), um depois do outro, na voz do aparelho. */
+export function speakTtsSequence(texts: string[], slow = false): void {
+  stop();
+  queue = [...texts];
+  queueSlow = slow;
+  ttsOnly = true;
+  next();
 }
 
 /* ---------- reserva: voz do aparelho ---------- */

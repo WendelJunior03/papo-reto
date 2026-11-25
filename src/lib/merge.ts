@@ -5,6 +5,7 @@
 import { emptyDay, wasOnboarded, type DayStats, type SavedData } from "./storage";
 import type { CardState } from "./srs";
 import { capEar } from "./ear";
+import { mergeStories } from "./story";
 
 function betterCard(a: CardState | undefined, b: CardState | undefined): CardState | undefined {
   if (!a) return b;
@@ -79,6 +80,8 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     supportPromptAt: [local.supportPromptAt, remote.supportPromptAt].filter((x): x is string => !!x).sort().at(-1) ?? null,
     dialogueAt: latest(local.dialogueAt, remote.dialogueAt),
     practiceAt: latest(local.practiceAt, remote.practiceAt),
+    // Historinhas dos dois aparelhos, por id, as mais recentes primeiro.
+    stories: mergeStories(local.stories, remote.stories),
     reminderTime: local.reminderAdded ? local.reminderTime : (remote.reminderTime ?? local.reminderTime),
   };
 }

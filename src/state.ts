@@ -11,10 +11,14 @@ import type { SessionState } from "../server/session";
 import type { Blank, Level, LyricLine } from "./lib/lyrics";
 import { buildPlaylist, type ListenLang, type ListenSource, type Playlist } from "./lib/playlist";
 import type { AdminStats, AdminUser } from "./lib/api";
+import { mergeStories, pickKnownPhrases, type Story } from "./lib/story";
 
-/** "ouvir" (modo Ouvir no carro) e "admin" (painel do dono) são telas cheias sem botão na barra, como "evolucao". */
-export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "ouvir" | "admin";
-export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "ouvir", "admin"];
+/**
+ * "ouvir" (modo Ouvir no carro), "historia" (historinhas) e "admin" (painel do dono)
+ * são telas cheias sem botão na barra, como "evolucao".
+ */
+export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "ouvir" | "historia" | "admin";
+export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "ouvir", "historia", "admin"];
 export type PracticeMode = "falar" | "ouvir" | "musica";
 
 export interface Practice {
@@ -114,6 +118,19 @@ export interface Listen {
   packIndex: number;
 }
 
+/** Tela das historinhas: a aberta (id em `data.stories`), o pedido em andamento e a tradução. */
+export interface StoryScreen {
+  current: string | null;
+  loading: boolean;
+  error: string | null;
+  /** Tradução de todas as falas (o interruptor global). */
+  showPt: boolean;
+  /** Falas tocadas uma a uma: invertem o interruptor global. */
+  flipped: Set<number>;
+  /** Historinhas que ainda dá pra criar hoje com a IA do app (null = não sabe ou chave própria). */
+  left: number | null;
+}
+
 /** Painel do dono: números, usuários e a senha temporária gerada (mostrada uma vez). */
 export interface AdminPanel {
   loading: boolean;
@@ -165,6 +182,7 @@ export interface AppState {
   adminPanel: AdminPanel | null;
   /** Boas-vindas da primeira entrada: passo aberto (1–3) ou 0 = fechada. */
   onboarding: number;
+  story: StoryScreen;
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -211,6 +229,7 @@ export function createState(
     admin: false,
     adminPanel: null,
     onboarding: 0,
+    story: { current: data.stories[0]?.id ?? null, loading: false, error: null, showPt: false, flipped: new Set(), left: null },
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
     listen: { source: "hoje", lang: "enpt", slow: false, awake: false, packIndex: todayIndex },
@@ -402,6 +421,28 @@ export function listenPlaylist(s: AppState): Playlist {
   const l = s.listen;
   if (l.source === "revisao") return buildPlaylist({ source: "review", progress: s.data.progress }, l.lang);
   return buildPlaylist({ source: "pack", packIndex: l.source === "hoje" ? s.todayIndex : l.packIndex }, l.lang);
+}
+
+/* ---------- historinhas ---------- */
+/** Frases que a pessoa sabe, sorteadas pra próxima historinha. */
+export const storyPhrases = (s: AppState): string[] => pickKnownPhrases(allPhrases, s.data.progress);
+
+export const currentStory = (s: AppState): Story | null =>
+  s.data.stories.find((x) => x.id === s.story.current) ?? s.data.stories[0] ?? null;
+
+/** Guarda a historinha nova (fica entre as últimas) e abre ela. */
+export function addStory(s: AppState, story: Omit<Story, "id" | "date" | "at">, now = Date.now()): Story {
+  const full: Story = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, date: s.today, at: now, ...story };
+  s.data.stories = mergeStories([full], s.data.stories);
+  openStory(s, full.id);
+  persist(s);
+  return full;
+}
+
+export function openStory(s: AppState, id: string): void {
+  s.story.current = id;
+  s.story.flipped = new Set();
+  s.story.error = null;
 }
 
 /* ---------- apoio ao projeto ---------- */

@@ -663,3 +663,30 @@ button.plan-item:hover .plan-ck{box-shadow:inset 0 0 0 1.5px var(--ink)}
 .onb-skip{color:var(--on-ceu-soft)}
 .onb :focus-visible{outline-color:var(--am)}
 body.onb-open{overflow:hidden}
+/* Historinhas */
+.story-hero{padding-block:24px 26px;margin-top:12px}
+.story-hero .wrap{display:grid;gap:12px}
+.story-hero .acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.story-title{font-size:clamp(28px,8vw,38px);font-weight:700;line-height:1.1;letter-spacing:-.04em;text-wrap:balance}
+p.story-title{font-size:clamp(24px,6.5vw,30px)}
+.story-sub{color:var(--on-ceu-soft);font-size:17px;line-height:1.4}
+.story-hero .btn{justify-self:start}
+.story-body{display:grid;gap:16px;padding-bottom:20px}
+.story-err{background:var(--atn-bg);color:var(--atn-tx);border-radius:12px;padding:12px 14px;font-size:14.5px}
+.story-lines{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.story-line{display:flex;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--n200);border-radius:var(--r);padding:12px 14px}
+.story-line .ex-play{margin-top:2px}
+.story-text{flex:1;min-width:0;display:grid;gap:4px;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer}
+.story-en{font-size:18px;font-weight:600;line-height:1.35;color:var(--ink);letter-spacing:-.01em}
+.story-pt{font-size:15px;line-height:1.4;color:var(--n600)}
+.story-text[aria-expanded="true"] .story-en{color:var(--noite)}
+.story-hint{font-size:13px;color:var(--n500)}
+.story-again{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.story-again .mono{color:var(--n600)}
+.story .btn[disabled]{opacity:.6;cursor:progress;transform:none}
+.story-saved{display:grid;gap:10px;margin-top:8px}
+.story-saved ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.story-saved button{width:100%;display:flex;align-items:baseline;justify-content:space-between;gap:12px;text-align:left;padding:11px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--n200);font:500 15px var(--f-display);color:var(--ink)}
+.story-saved button:hover{border-color:var(--ink)}
+.story-saved button[aria-current="true"]{border-color:var(--noite);box-shadow:inset 3px 0 0 var(--am)}
+.story-saved .mono{flex:none;color:var(--n500);font-size:10.5px}

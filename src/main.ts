@@ -1,7 +1,7 @@
 import "./styles.css";
 import { findPhrase } from "./data";
 import { esc } from "./lib/html";
-import { play, playSequence, speakTts, stop as stopAudio } from "./lib/speech";
+import { play, playSequence, speakTts, speakTtsSequence, stop as stopAudio } from "./lib/speech";
 import { cancelListening, listen, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
 import { bestOf } from "./lib/match";
 import { plain } from "./lib/html";
@@ -16,7 +16,10 @@ import {
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
   setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track, emptyMusic, type MusicVideo,
   openDailySupport, markSupported, aiLocked, openListen, listenPlaylist,
+  addStory, currentStory, openStory, storyPhrases,
 } from "./state";
+import { MIN_KNOWN, type StoryLine } from "./lib/story";
+import { renderStory } from "./views/story";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
 import { lastUser, load, loadPix, save, saveAiKey, savePix, setLastUser } from "./lib/storage";
@@ -254,6 +257,7 @@ function render(): void {
     : s.tab === "evolucao" ? renderEvolution(s)
     : s.tab === "musica" ? renderMusic(s)
     : s.tab === "ouvir" ? renderListen(s, carStatus(), wakeLockAvailable)
+    : s.tab === "historia" ? renderStory(s)
     : s.tab === "admin" && s.admin ? renderAdmin(s)
     : renderSituations(s);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
@@ -683,6 +687,52 @@ setInterval(() => {
   }
 }, 1000);
 
+/* ---------- historinhas ---------- */
+/** De onde a pessoa veio (o "Voltar" leva de volta pra lá). */
+let storyFrom: Tab = "hoje";
+
+/** Pede uma historinha nova ao servidor com frases sorteadas entre as que a pessoa sabe. */
+async function newStory(): Promise<void> {
+  const st = s.story;
+  if (st.loading) return;
+  stopAudio();
+  const phrases = storyPhrases(s);
+  if (phrases.length < MIN_KNOWN) {
+    st.error = "Marque algumas frases como \"Sei essa\" primeiro.";
+    return render();
+  }
+  st.loading = true;
+  st.error = null;
+  render();
+  try {
+    const res = await fetch("./api/story", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(s.aiKey ? { "X-AI-Key": s.aiKey.key, ...(s.aiKey.model ? { "X-AI-Model": s.aiKey.model } : {}) } : {}),
+      },
+      body: JSON.stringify({ phrases }),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      story?: { title: string; title_pt: string; lines: StoryLine[] }; error?: string; left?: number; needsKey?: boolean;
+    };
+    if (typeof data.left === "number") st.left = data.left;
+    if (data.needsKey) s.serverAi = false;
+    if (!res.ok || !data.story) {
+      throw new Error(data.error ?? (res.status === 404 ? "As historinhas precisam do servidor do app (bun dev ou bun preview com GEMINI_API_KEY)." : "A IA não respondeu. Tenta de novo."));
+    }
+    addStory(s, data.story);
+    window.scrollTo(0, 0);
+  } catch (e) {
+    st.error = e instanceof Error && e.message !== "Failed to fetch"
+      ? e.message
+      : "Sem internet: criar historinha precisa de conexão. As que você já tem abrem normalmente.";
+  } finally {
+    st.loading = false;
+    if (s.tab === "historia") render();
+  }
+}
+
 /* ---------- notificações ---------- */
 const b64ToBytes = (b64: string): Uint8Array<ArrayBuffer> => {
   const raw = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64.length + 3) % 4));
@@ -943,6 +993,41 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "admin-temp-close": () => {
     if (s.adminPanel) s.adminPanel.temp = null;
     render();
+  },
+
+  /* historinhas */
+  "story-open": () => {
+    storyFrom = s.tab;
+    s.story.error = null;
+    setTab("historia");
+  },
+  "story-close": () => setTab(storyFrom === "historia" ? "hoje" : storyFrom),
+  "story-new": () => void newStory(),
+  "story-pick": (el) => {
+    stopAudio();
+    openStory(s, el.dataset.id!);
+    render();
+    window.scrollTo(0, 0);
+  },
+  "story-pt-all": () => {
+    s.story.showPt = !s.story.showPt;
+    s.story.flipped.clear();
+    render();
+  },
+  "story-pt": (el) => {
+    const set = s.story.flipped;
+    const i = Number(el.dataset.i);
+    set.has(i) ? set.delete(i) : set.add(i);
+    render();
+  },
+  // Texto gerado não tem áudio gravado: vai na voz en-US do aparelho.
+  "story-say": (el) => {
+    const line = currentStory(s)?.lines[Number(el.dataset.i)];
+    if (line) speakTts(line.en);
+  },
+  "story-say-all": () => {
+    const story = currentStory(s);
+    if (story) speakTtsSequence(story.lines.map((l) => l.en));
   },
 
   /* ouvir no carro: o toque de abrir já dá o play (no iPhone o áudio só começa a partir de um toque) */

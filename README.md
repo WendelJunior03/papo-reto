@@ -85,6 +85,8 @@ bun run build && bunx wrangler deploy
 - Notificações: o cron do Worker (a cada minuto) envia os avisos agendados. No iPhone, só com o app instalado na Tela de Início (iOS 16.4+).
 - **Lembrete diário** (aba Hoje): a pessoa escolhe o horário e o app manda "Seu pacote do dia chegou!" (com quantas revisões estão esperando) no fuso do aparelho, uma vez por dia (`server/reminders.ts`). O push vai sem conteúdo; o service worker busca o texto em `/api/push/latest`. Sem notificação (iPhone sem instalar, navegador sem push), fica o lembrete no calendário (.ics). Tabelas em `migrations/0004_reminders.sql`. No Mac, `bun dev`/`bun preview` imitam o cron (`scripts/cron.ts`) quando há chaves VAPID no `.env`.
 
+- **Historinhas** (atalho no Hoje): a IA escreve um conto curto (5 a 8 frases, nível fácil) com até 8 frases que a pessoa já marcou como "Sei essa", destacadas em amarelo. Tradução por frase, voz do aparelho (en-US) e as últimas 5 guardadas no progresso (abrem sem internet). Rota `POST /api/story` (`server/story.ts`): mesma escolha de IA da conversa, mas **não gasta a sessão de 7 minutos** — com a chave do app vale um limite de **3 por dia** por usuário (tabela em `migrations/0007_stories.sql`); com chave própria, sem limite.
+
 Configuração (`.env` local ou `bunx wrangler secret put …`): `GEMINI_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gerar com `generateVapid()` de `server/push.ts`).
 
 ## Estrutura

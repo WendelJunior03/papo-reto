@@ -10,6 +10,7 @@
  *   PUT  /api/progress      { data, updatedAt }
  *   POST /api/chat          conversa com IA (só logado)
  *   GET  /api/ai/session    estado da sessão com a IA do app (pronta, em andamento ou em espera)
+ *   POST /api/story         { phrases }   historinha com frases que a pessoa já sabe (limite diário com a IA do app)
  *   GET  /api/push/key      chave pública pra inscrever o aparelho nas notificações
  *   POST /api/push/subscribe   { endpoint, keys: { p256dh, auth } }
  *   POST /api/push/unsubscribe { endpoint }
@@ -35,6 +36,7 @@ import { latestOutbox, schedulePush, type Vapid } from "./push";
 import { HHMM, validTimeZone } from "./reminders";
 import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInfo } from "./music";
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
+import { countStory, DEFAULT_STORIES_PER_DAY, handleStory, storiesToday } from "./story";
 
 export interface ApiConfig {
   db: Db;
@@ -46,6 +48,8 @@ export interface ApiConfig {
   openaiKey?: string;
   /** Sessão com a IA do app (padrão: 7 min de conversa, 1 h de espera, 40 mensagens). */
   session?: Partial<SessionConfig>;
+  /** Historinhas por dia com a IA do app (padrão: 3). Não gasta a sessão de conversa. */
+  storiesPerDay?: number;
   /** Chaves das notificações; sem elas o app não oferece aviso. */
   vapid?: Vapid;
   /** Chave da YouTube Data API pra busca na aba Música (sem ela, só colar link). */
@@ -273,6 +277,33 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         await countAiMessage(db, user.id, now);
         const row2 = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
         return { session: sessionState(row2, now, sc) };
+      });
+    }
+
+    case "POST /api/story": {
+      // Mesma escolha de IA da conversa: chave do próprio usuário (sem limite) ou a do app.
+      const userKey = req.headers.get("x-ai-key")?.trim();
+      const model = req.headers.get("x-ai-model")?.trim().slice(0, 60) || undefined;
+      if (userKey) {
+        const provider = providerFor(userKey);
+        if (!provider) return json({ error: "Chave não reconhecida. Use uma chave do Google (Gemini), da OpenAI (sk-...) ou da Anthropic (sk-ant-...)." }, 400);
+        if (model && !/^[a-zA-Z0-9._:-]+$/.test(model)) return json({ error: "Nome de modelo inválido." }, 400);
+        return handleStory(req, { provider, key: userKey, model });
+      }
+      const serverAuth = serverAuthOf(cfg);
+      if (!serverAuth) return json({ error: "Adicione sua chave de IA pra criar historinhas.", needsKey: true }, 403);
+      const limit = cfg.storiesPerDay ?? DEFAULT_STORIES_PER_DAY;
+      const now = Date.now();
+      const used = await storiesToday(db, user.id, now);
+      if (used >= limit) {
+        return json({ error: `Você já criou ${limit} historinhas hoje. Amanhã tem mais! Enquanto isso, releia as suas.`, limit: true, left: 0 }, 429);
+      }
+      // Só conta se a historinha vier de verdade.
+      return handleStory(req, serverAuth, async () => {
+        await countStory(db, user.id, now);
+        // Conta pro painel do dono (custo da chave do app), como uma mensagem.
+        await countAiMessage(db, user.id, now);
+        return { left: Math.max(0, limit - used - 1) };
       });
     }
 
