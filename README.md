@@ -14,6 +14,7 @@ bun run typecheck
 bun run build    # gera dist/ (com service worker para funcionar offline)
 bun preview      # serve o dist/ em http://localhost:4173
 bun run audio    # grava os áudios que faltam (macOS; --force regrava tudo)
+bun run deploy   # build + publica no Cloudflare (normalmente o merge na main já publica sozinho)
 ```
 
 Para testar no celular: rode `bun preview` e abra `http://<IP-do-Mac>:4173` na mesma rede Wi-Fi.
@@ -55,6 +56,8 @@ O app exige login (usuário e senha). Banco **SQLite**: no Mac é o arquivo `dat
 - O progresso de cada usuário fica na conta e é combinado entre aparelhos (o mais avançado de cada frase vence). Offline, quem já entrou no aparelho continua usando; sincroniza quando a internet volta.
 
 Configuração local: o Bun lê o `.env` sozinho (veja `.env.example`).
+
+O `wrangler` fica fixo no projeto (`devDependencies`, versão exata) pra o build do Cloudflare e o Mac usarem a mesma versão.
 
 Publicar no Cloudflare:
 ```bash
