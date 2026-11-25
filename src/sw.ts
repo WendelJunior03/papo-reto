@@ -146,7 +146,7 @@ interface PushText {
   url: string;
 }
 
-const FALLBACK_PUSH: PushText = { kind: "papo-reto", title: "Papo Reto", body: "Bora praticar inglês? Seu pacote do dia está te esperando.", url: "./" };
+const FALLBACK_PUSH: PushText = { kind: "papo-reto", title: "Papo Reto English", body: "Bora praticar inglês? Seu pacote do dia está te esperando.", url: "./" };
 
 async function latestPush(): Promise<PushText> {
   try {

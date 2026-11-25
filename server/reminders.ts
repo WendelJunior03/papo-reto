@@ -72,7 +72,7 @@ export function dueReviews(progressJson: string | null, today: string): number {
 
 export function reminderMessage(due: number): PushMessage {
   const extra = due > 0 ? ` E ${due === 1 ? "tem 1 revisão" : `tem ${due} revisões`} te esperando.` : "";
-  return { title: "Papo Reto", body: `Seu pacote do dia chegou!${extra}`, url: "./#hoje" };
+  return { title: "Papo Reto English", body: `Seu pacote do dia chegou!${extra}`, url: "./#hoje" };
 }
 
 /** Rodado pelo cron do Worker a cada minuto: manda os lembretes que chegaram na hora. */

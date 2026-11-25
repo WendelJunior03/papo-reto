@@ -225,8 +225,8 @@ describe("texto das notificações", () => {
     expect((await call("GET", "push/latest")).data).toBeNull();
     const id = (await cfg.db.first<{ id: number }>("SELECT id FROM users WHERE username = 'wendel'"))!.id;
     await writeOutbox(cfg.db, id, "ai-ready", JOB_MESSAGES["ai-ready"]!, 1000);
-    await writeOutbox(cfg.db, id, "reminder", { title: "Papo Reto", body: "Seu pacote do dia chegou!", url: "./#hoje" }, 2000);
-    expect((await call("GET", "push/latest")).data).toEqual({ kind: "reminder", title: "Papo Reto", body: "Seu pacote do dia chegou!", url: "./#hoje" });
+    await writeOutbox(cfg.db, id, "reminder", { title: "Papo Reto English", body: "Seu pacote do dia chegou!", url: "./#hoje" }, 2000);
+    expect((await call("GET", "push/latest")).data).toEqual({ kind: "reminder", title: "Papo Reto English", body: "Seu pacote do dia chegou!", url: "./#hoje" });
     await writeOutbox(cfg.db, id, "ai-ready", JOB_MESSAGES["ai-ready"]!, 3000);
     expect((await call("GET", "push/latest")).data.kind).toBe("ai-ready");
 
