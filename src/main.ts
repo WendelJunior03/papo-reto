@@ -41,6 +41,7 @@ import {
   stopCar, toggle as carToggle, wakeLockAvailable,
 } from "./lib/carplayer";
 import { renderAdmin } from "./views/admin";
+import { ONBOARDING_STEPS, renderOnboarding } from "./views/onboarding";
 
 let s!: AppState;
 const app = document.getElementById("app")!;
@@ -72,6 +73,7 @@ const auth: AuthView = { mode: "login", error: null, busy: false, username: "" }
 
 function renderAuthScreen(): void {
   document.body.classList.add("auth");
+  showOnboarding(0);
   app.innerHTML = renderAuth(auth);
   const cv = document.getElementById("dots");
   if (cv instanceof HTMLCanvasElement) drawDots(cv, 3);
@@ -177,7 +179,10 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     void checkPushOn().then(loadReminder);
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
+    // Primeira entrada: boas-vindas (só depois de juntar com o servidor, pra conta antiga em aparelho novo não ver).
+    s.onboarding = s.data.onboarded ? 0 : 1;
     render();
+    showOnboarding();
     await pushNow();
   } catch {
     dirty = true; // sem conexão: sobe quando voltar
@@ -200,6 +205,25 @@ async function boot(): Promise<void> {
       renderAuthScreen();
     }
   }
+}
+
+/* ---------- boas-vindas ---------- */
+const onboardEl = document.body.appendChild(document.createElement("div"));
+
+/** Desenha (ou fecha) as boas-vindas; o resto da tela fica inerte enquanto ela está aberta. */
+function showOnboarding(step = s.onboarding): void {
+  const open = !!step;
+  onboardEl.innerHTML = renderOnboarding(step);
+  document.body.classList.toggle("onb-open", open);
+  document.querySelectorAll("header.top, main, nav.tabbar").forEach((el) => el.toggleAttribute("inert", open));
+  if (open) document.getElementById("onb-next")?.focus();
+}
+
+function finishOnboarding(): void {
+  s.onboarding = 0;
+  s.data.onboarded = true;
+  persist(s);
+  showOnboarding();
 }
 
 /* ---------- render ---------- */
@@ -498,7 +522,7 @@ function toast(msg: string, ok = false): void {
 
 function setTab(tab: Tab): void {
   // Janela diária do PIX: só depois da primeira troca de aba (a pessoa já usou o app hoje).
-  if (tab !== s.tab) openDailySupport(s);
+  if (tab !== s.tab && !s.onboarding) openDailySupport(s);
   if (s.tab === "musica" && tab !== "musica") destroyPlayer();
   if (s.tab === "ouvir" && tab !== "ouvir") stopCar();
   // A senha temporária aparece uma vez só: saiu do painel, some.
@@ -986,6 +1010,12 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   },
   "music-pick-recent": (el) => void musicSearch(el.dataset.id!),
   "music-suggest": (el) => void musicSearch(el.dataset.q!),
+  "onb-next": () => {
+    if (s.onboarding >= ONBOARDING_STEPS) return finishOnboarding();
+    s.onboarding++;
+    showOnboarding();
+  },
+  "onb-skip": () => finishOnboarding(),
   "music-back": () => {
     destroyPlayer();
     resumeAt = 0;
@@ -1247,6 +1277,7 @@ document.addEventListener("input", (e) => {
 
 document.addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
+  if (e.key === "Escape" && s?.onboarding) return finishOnboarding();
   if (e.key === "Escape" && s?.support.open) {
     s.support.open = false;
     return render();

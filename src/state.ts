@@ -163,6 +163,8 @@ export interface AppState {
   /** Dono do app (vem do /api/me; o servidor confere de novo em cada rota do painel). */
   admin: boolean;
   adminPanel: AdminPanel | null;
+  /** Boas-vindas da primeira entrada: passo aberto (1–3) ou 0 = fechada. */
+  onboarding: number;
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -208,6 +210,7 @@ export function createState(
     musicSearch: false,
     admin: false,
     adminPanel: null,
+    onboarding: 0,
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
     listen: { source: "hoje", lang: "enpt", slow: false, awake: false, packIndex: todayIndex },

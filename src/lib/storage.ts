@@ -27,6 +27,8 @@ export interface SavedData {
   /** Último dia em que terminou um diálogo guiado e um treino (pro "Plano de hoje"). */
   dialogueAt: DateKey | null;
   practiceAt: DateKey | null;
+  /** Já viu as boas-vindas (os 3 passos da primeira entrada). */
+  onboarded: boolean;
 }
 
 export interface SongAttempt {
@@ -73,7 +75,12 @@ export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
   reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {}, songs: {}, earWords: {},
   dialogueAt: null, practiceAt: null,
+  onboarded: false,
 });
+
+/** Dado salvo antes das boas-vindas existirem: quem já tem progresso conta como visto. */
+export const wasOnboarded = (d: Partial<SavedData>): boolean =>
+  d.onboarded ?? (Object.keys(d.progress ?? {}).length > 0 || (d.visits?.length ?? 0) > 1);
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */
 const keyFor = (user: string): string => `${PREFIX}:${user.toLowerCase()}`;
@@ -89,7 +96,7 @@ function read(key: string): Partial<SavedData> | null {
 
 export function load(user: string): SavedData {
   const own = read(keyFor(user));
-  if (own) return { ...emptyData(), ...own };
+  if (own) return { ...emptyData(), ...own, onboarded: wasOnboarded(own) };
   // Progresso de antes de existir login: o primeiro usuário que entrar neste aparelho herda.
   const legacy = read(PREFIX);
   if (legacy) {
@@ -98,7 +105,7 @@ export function load(user: string): SavedData {
     } catch {
       // segue sem apagar
     }
-    return { ...emptyData(), ...legacy };
+    return { ...emptyData(), ...legacy, onboarded: wasOnboarded(legacy) };
   }
   return emptyData();
 }
