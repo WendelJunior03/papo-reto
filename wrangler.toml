@@ -27,3 +27,17 @@ migrations_dir = "migrations"
 binding = "DB"
 database_name = "papo-reto"
 database_id = "8f1283cd-87d5-4019-9302-a4507cd059bc"
+
+# Salas ao vivo: um Durable Object por sala (código), com WebSocket hibernável.
+# "new_sqlite_classes" = armazenamento SQLite do próprio objeto (o que roda no plano grátis).
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[[previews.durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
