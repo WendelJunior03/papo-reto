@@ -98,6 +98,8 @@ export function localRooms(): { host: RoomsHost; websocket: WebSocketHandler<WsD
     message(ws, msg) {
       const r = rooms.get(ws.data.code);
       if (!r || !r.sockets.has(ws)) return;
+      // Conexão antiga (reabriu em outra aba) não fala mais pela pessoa.
+      if (r.s.members.find((m) => m.id === ws.data.userId)?.conn !== ws.data.conn) return;
       const now = Date.now();
       if (msg === "ping") return void ws.send("pong"); // igual à resposta automática do Durable Object
       if (typeof msg === "string") return apply(ws.data.code, r, handleMessage(r.s, ws.data.userId, msg, now));
