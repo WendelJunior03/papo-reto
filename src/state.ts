@@ -405,13 +405,9 @@ export function listenPlaylist(s: AppState): Playlist {
 }
 
 /* ---------- apoio ao projeto ---------- */
-/** Dias de uso antes de hoje pra janela automática aparecer (só do 3º dia em diante). */
-export const SUPPORT_MIN_PAST_DAYS = 2;
-
-/** Abre a janela do PIX sozinha uma vez por dia, pra quem ainda não apoiou e já usou o app em 2 dias antes de hoje. */
+/** Abre a janela do PIX sozinha na primeira abertura do dia, pra quem ainda não apoiou. */
 export function shouldShowDailySupport(data: SavedData, today: DateKey, hasPix: boolean): boolean {
-  const pastDays = new Set(data.visits.filter((d) => d < today)).size;
-  return hasPix && !data.supported && data.supportPromptAt !== today && pastDays >= SUPPORT_MIN_PAST_DAYS;
+  return hasPix && !data.supported && data.supportPromptAt !== today;
 }
 
 export function openDailySupport(s: AppState): boolean {

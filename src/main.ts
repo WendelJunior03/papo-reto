@@ -181,6 +181,8 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     save(user, merged);
     // Primeira entrada: boas-vindas (só depois de juntar com o servidor, pra conta antiga em aparelho novo não ver).
     s.onboarding = s.data.onboarded ? 0 : 1;
+    // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou), menos no dia das boas-vindas.
+    if (!s.onboarding) openDailySupport(s);
     render();
     showOnboarding();
     await pushNow();
@@ -521,8 +523,6 @@ function toast(msg: string, ok = false): void {
 }
 
 function setTab(tab: Tab): void {
-  // Janela diária do PIX: só depois da primeira troca de aba (a pessoa já usou o app hoje).
-  if (tab !== s.tab && !s.onboarding) openDailySupport(s);
   if (s.tab === "musica" && tab !== "musica") destroyPlayer();
   if (s.tab === "ouvir" && tab !== "ouvir") stopCar();
   // A senha temporária aparece uma vez só: saiu do painel, some.
