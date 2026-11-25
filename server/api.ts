@@ -225,6 +225,10 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
     case "POST /api/auth/logout":
       await destroySession(db, req);
       return json({ ok: true }, 200, { "Set-Cookie": clearCookie });
+
+    // Página de divulgação (/conheca): o PIX de apoio aparece pra quem ainda nem tem conta.
+    case "GET /api/pix":
+      return json({ pix: cfg.pix?.key ? cfg.pix : null });
   }
 
   // Daqui pra baixo, só logado.

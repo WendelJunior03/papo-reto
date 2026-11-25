@@ -32,6 +32,7 @@ const server = Bun.serve({
     if (apiRes) return apiRes;
     let urlPath = new URL(req.url).pathname;
     if (urlPath.endsWith("/")) urlPath += "index.html";
+    if (urlPath === "/conheca") urlPath = "/conheca.html"; // como o Cloudflare serve páginas .html sem a extensão
     const full = safePath(dist, urlPath);
     const path = full ? full.slice(dist.length) : "";
     const file = Bun.file(full ?? join(dist, "index.html"));

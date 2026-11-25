@@ -46,6 +46,8 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(audio(req));
     return;
   }
+  // A página de divulgação é outra página: vai pela rede, não pelo app guardado.
+  if (req.mode === "navigate" && /\/conheca(\.html)?$/.test(url.pathname)) return;
   if (req.mode === "navigate") {
     // Qualquer rota abre o app guardado ("./"); tenta a rede só se não houver cópia.
     event.respondWith(caches.match("./").then((r) => (r ? unredirected(r) : fetch(req))));

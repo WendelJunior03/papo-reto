@@ -235,3 +235,11 @@ describe("texto das notificações", () => {
     expect((await call("GET", "push/latest")).data).toBeNull();
   });
 });
+
+describe("página de divulgação", () => {
+  test("PIX de apoio sai sem login (e null quando não configurado)", async () => {
+    expect(await call("GET", "pix", undefined, false)).toMatchObject({ status: 200, data: { pix: null } });
+    cfg.pix = { key: "chave-teste", name: "Fulano", city: "Cidade" };
+    expect((await call("GET", "pix", undefined, false)).data).toEqual({ pix: { key: "chave-teste", name: "Fulano", city: "Cidade" } });
+  });
+});
