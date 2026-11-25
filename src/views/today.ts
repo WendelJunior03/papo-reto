@@ -2,6 +2,7 @@ import { packs, phraseId, type Phrase, type Tag } from "../data";
 import { esc, highlight, pad } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import { ui } from "../icons";
+import { canPush, isIOS, isStandalone } from "../lib/device";
 import { currentPack, knownInPack, reviewsDue, type AppState } from "../state";
 
 export const TAGS: Record<Tag, [label: string, cls: string]> = {
@@ -30,9 +31,61 @@ function examples(id: string, list: Phrase["examples"]): string {
     .join("")}</ul>`;
 }
 
-const isIOS = (): boolean => /iPad|iPhone|iPod/.test(navigator.userAgent);
-const isStandalone = (): boolean =>
-  matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+/** Lembrete diário: notificação no horário escolhido; o calendário (.ics) fica de reserva. */
+function reminderCard(s: AppState): string {
+  const time = esc(s.data.reminderTime);
+  const input = `<label class="mono" for="reminder-time">Horário</label>
+        <input type="time" id="reminder-time" value="${time}">`;
+  const calendar = `<button class="btn btn-am" data-act="reminder">${ui.download}Adicionar ao calendário</button>`;
+  const calendarLink = `<button class="link-btn subtle reminder-alt" data-act="reminder">Prefiro um lembrete no calendário</button>`;
+  const r = s.reminder;
+
+  if (s.pushAvailable && canPush()) {
+    if (r?.enabled) {
+      return `<div class="reminder">
+      <span class="eyebrow">Lembrete diário</span>
+      <h3>Lembrete às <span class="mark">${esc(r.time)}</span> ${ui.tick}</h3>
+      <p>${s.pushOn
+        ? "Todo dia nesse horário chega uma notificação com o pacote do dia (e as revisões que estiverem esperando)."
+        : "Ativado em outro aparelho. Toque em <b>Ativar neste aparelho</b> pra receber aqui também."}</p>
+      <div class="reminder-row">
+        ${input}
+        <button class="btn btn-am" data-act="reminder-on">${s.pushOn ? "Mudar horário" : "Ativar neste aparelho"}</button>
+        <button class="btn btn-ghost" data-act="reminder-off">Desativar</button>
+      </div>
+      ${calendarLink}
+    </div>`;
+    }
+    return `<div class="reminder">
+      <span class="eyebrow">Lembrete diário</span>
+      <h3>Todo dia, no mesmo horário.</h3>
+      <p>Escolha a hora e o app te manda uma notificação com o pacote do dia — e quantas revisões estão esperando.</p>
+      <div class="reminder-row">
+        ${input}
+        <button class="btn btn-am" data-act="reminder-on">${ui.tick}Ativar lembrete</button>
+      </div>
+      ${calendarLink}
+    </div>`;
+  }
+
+  // Sem notificação: explica por quê e oferece o calendário.
+  const why = !s.pushAvailable
+    ? "Cria um alarme diário no calendário do seu celular, com o link pro pacote do dia. Sem conta e sem internet."
+    : isIOS() && !isStandalone()
+      ? `No iPhone, a notificação só funciona com o app instalado: toque em ${ui.share} <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b> e abra por lá. Enquanto isso, dá pra usar um alarme no calendário.`
+      : "Este navegador não recebe notificações. Dá pra criar um alarme diário no calendário do celular, com o link pro pacote do dia.";
+  return `<div class="reminder">
+      <span class="eyebrow">Lembrete diário</span>
+      <h3>${s.data.reminderAdded ? "Lembrete no seu calendário." : "Todo dia, no mesmo horário."}</h3>
+      <p>${s.data.reminderAdded
+        ? `Ele toca às <b>${time}</b> com o link do app. Quer outro horário? Escolha e adicione de novo — o novo substitui o antigo.`
+        : why}</p>
+      <div class="reminder-row">
+        ${input}
+        ${calendar}
+      </div>
+    </div>`;
+}
 
 export function renderToday(s: AppState): string {
   const pack = currentPack(s);
@@ -130,18 +183,7 @@ export function renderToday(s: AppState): string {
     </div>
   </div></section>
   <section class="band"><div class="wrap">
-    <div class="reminder">
-      <span class="eyebrow">Lembrete diário</span>
-      <h3>${s.data.reminderAdded ? "Lembrete no seu calendário." : "Todo dia, no mesmo horário."}</h3>
-      <p>${s.data.reminderAdded
-        ? `Ele toca às <b>${esc(s.data.reminderTime)}</b> com o link do app. Quer outro horário? Escolha e adicione de novo — o novo substitui o antigo.`
-        : "Cria um alarme diário no calendário do seu celular, com o link pro pacote do dia. Sem conta e sem internet."}</p>
-      <div class="reminder-row">
-        <label class="mono" for="reminder-time">Horário</label>
-        <input type="time" id="reminder-time" value="${esc(s.data.reminderTime)}">
-        <button class="btn btn-am" data-act="reminder">${ui.download}Adicionar ao calendário</button>
-      </div>
-    </div>
+    ${reminderCard(s)}
     ${iosHint}
   </div></section>
   </div>`;

@@ -5,6 +5,7 @@ import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
 import { emptyDay, load, loadAiKey, save, type AiKey, type DayStats, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
+import type { Reminder } from "./lib/api";
 import type { SessionState } from "../server/session";
 import type { Blank, Level, LyricLine } from "./lib/lyrics";
 
@@ -123,6 +124,8 @@ export interface AppState {
   aiSession: SessionState | null;
   pushAvailable: boolean;
   pushOn: boolean;
+  /** Lembrete diário por notificação, como está no servidor (null = nunca ativou). */
+  reminder: Reminder | null;
   /** PIX do projeto (null = apoio escondido), janela aberta, valor escolhido e lembrete atual. */
   pix: PixConfig | null;
   support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
@@ -168,6 +171,7 @@ export function createState(
     aiSession: null,
     pushAvailable: false,
     pushOn: false,
+    reminder: null,
     music: emptyMusic(),
     musicSearch: false,
     pix,

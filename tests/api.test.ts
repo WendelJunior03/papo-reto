@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { handleApi, type ApiConfig } from "../server/api";
 import { bunDb } from "../server/db-bun";
 import { hashPassword, verifyPassword } from "../server/auth";
+import { JOB_MESSAGES, writeOutbox } from "../server/push";
 
 let cfg: ApiConfig;
 let cookie = "";
@@ -165,5 +166,72 @@ describe("progresso", () => {
   test("IA e progresso exigem login", async () => {
     expect((await call("GET", "progress")).status).toBe(401);
     expect((await call("POST", "chat", { scenario: {}, messages: [] })).status).toBe(401);
+  });
+});
+
+describe("lembrete diário", () => {
+  const vapid = { publicKey: "pub", privateJwk: "{}", subject: "https://x" };
+
+  test("exige login", async () => {
+    cfg.vapid = vapid;
+    expect((await call("GET", "reminder")).status).toBe(401);
+    expect((await call("PUT", "reminder", { time: "20:00", tz: "America/Sao_Paulo", enabled: true })).status).toBe(401);
+    expect((await call("GET", "push/latest")).status).toBe(401);
+  });
+  test("sem chaves de notificação no servidor, não oferece lembrete", async () => {
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    expect((await call("PUT", "reminder", { time: "20:00", tz: "America/Sao_Paulo", enabled: true })).status).toBe(404);
+  });
+  test("valida horário e fuso", async () => {
+    cfg.vapid = vapid;
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    for (const time of ["24:00", "8:00", "20:60", "20h", ""]) {
+      const r = await call("PUT", "reminder", { time, tz: "America/Sao_Paulo", enabled: true });
+      expect({ time, status: r.status }).toEqual({ time, status: 400 });
+    }
+    const badTz = await call("PUT", "reminder", { time: "20:00", tz: "Marte/Olimpo", enabled: true });
+    expect(badTz.status).toBe(400);
+    expect(String(badTz.data.error)).toContain("Fuso");
+    expect((await call("PUT", "reminder", { time: "20:00", tz: "America/Sao_Paulo" })).status).toBe(400);
+  });
+  test("salva, devolve e desativa só pro dono", async () => {
+    cfg.vapid = vapid;
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    expect((await call("GET", "reminder")).data).toBeNull();
+    expect((await call("PUT", "reminder", { time: "07:30", tz: "America/Sao_Paulo", enabled: true })).status).toBe(200);
+    expect((await call("GET", "reminder")).data).toEqual({ time: "07:30", tz: "America/Sao_Paulo", enabled: true });
+    await call("PUT", "reminder", { time: "07:30", tz: "America/Sao_Paulo", enabled: false });
+    expect((await call("GET", "reminder")).data.enabled).toBe(false);
+
+    cookie = "";
+    await call("POST", "auth/signup", { username: "ana", password: "12345678", code: "convite-123" });
+    expect((await call("GET", "reminder")).data).toBeNull();
+  });
+  test("mudar o horário libera o lembrete de novo no mesmo dia", async () => {
+    cfg.vapid = vapid;
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    await call("PUT", "reminder", { time: "07:30", tz: "America/Sao_Paulo", enabled: true });
+    await cfg.db.run("UPDATE reminders SET last_sent = '2026-11-25'");
+    await call("PUT", "reminder", { time: "07:30", tz: "America/Sao_Paulo", enabled: true });
+    expect((await cfg.db.first<{ last_sent: string | null }>("SELECT last_sent FROM reminders"))!.last_sent).toBe("2026-11-25");
+    await call("PUT", "reminder", { time: "21:00", tz: "America/Sao_Paulo", enabled: true });
+    expect((await cfg.db.first<{ last_sent: string | null }>("SELECT last_sent FROM reminders"))!.last_sent).toBeNull();
+  });
+});
+
+describe("texto das notificações", () => {
+  test("devolve a mensagem mais recente do usuário (ou null)", async () => {
+    await call("POST", "auth/signup", { username: "wendel", password: "12345678", code: "convite-123" });
+    expect((await call("GET", "push/latest")).data).toBeNull();
+    const id = (await cfg.db.first<{ id: number }>("SELECT id FROM users WHERE username = 'wendel'"))!.id;
+    await writeOutbox(cfg.db, id, "ai-ready", JOB_MESSAGES["ai-ready"]!, 1000);
+    await writeOutbox(cfg.db, id, "reminder", { title: "Papo Reto", body: "Seu pacote do dia chegou!", url: "./#hoje" }, 2000);
+    expect((await call("GET", "push/latest")).data).toEqual({ kind: "reminder", title: "Papo Reto", body: "Seu pacote do dia chegou!", url: "./#hoje" });
+    await writeOutbox(cfg.db, id, "ai-ready", JOB_MESSAGES["ai-ready"]!, 3000);
+    expect((await call("GET", "push/latest")).data.kind).toBe("ai-ready");
+
+    cookie = "";
+    await call("POST", "auth/signup", { username: "ana", password: "12345678", code: "convite-123" });
+    expect((await call("GET", "push/latest")).data).toBeNull();
   });
 });

@@ -509,3 +509,5 @@ nav.tabbar button svg{width:20px;height:20px}
 .ear-link{stroke:var(--ultra);stroke-width:2;stroke-linecap:round}
 .ear-first{fill:#CFE5F8;stroke:#fff;stroke-width:2}
 .ear-last{fill:#175FAE;stroke:#fff;stroke-width:2}
+.reminder h3 svg{width:20px;height:20px;vertical-align:-2px;color:var(--verde-tx)}
+.reminder .reminder-alt{justify-self:start}

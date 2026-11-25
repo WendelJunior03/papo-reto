@@ -77,6 +77,7 @@ bun run build && bunx wrangler deploy
 - Modelos do Gemini: tenta `gemini-3.8-flash` e cai pro `gemini-3.5-flash-lite` se estiver sobrecarregado.
 - **Chave própria** (Gemini `AIza…`, OpenAI `sk-…` ou Anthropic `sk-ant-…`) colada na aba IA: sem limite de sessão, cobrada na conta da pessoa. Fica só no aparelho e vai por HTTPS a cada mensagem; o servidor não guarda.
 - Notificações: o cron do Worker (a cada minuto) envia os avisos agendados. No iPhone, só com o app instalado na Tela de Início (iOS 16.4+).
+- **Lembrete diário** (aba Hoje): a pessoa escolhe o horário e o app manda "Seu pacote do dia chegou!" (com quantas revisões estão esperando) no fuso do aparelho, uma vez por dia (`server/reminders.ts`). O push vai sem conteúdo; o service worker busca o texto em `/api/push/latest`. Sem notificação (iPhone sem instalar, navegador sem push), fica o lembrete no calendário (.ics). Tabelas em `migrations/0004_reminders.sql`. No Mac, `bun dev`/`bun preview` imitam o cron (`scripts/cron.ts`) quando há chaves VAPID no `.env`.
 
 Configuração (`.env` local ou `bunx wrangler secret put …`): `GEMINI_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gerar com `generateVapid()` de `server/push.ts`).
 
