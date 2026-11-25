@@ -876,6 +876,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   prev: () => { goToPack(s, s.packIndex - 1); render(); },
   next: () => { goToPack(s, s.packIndex + 1); render(); },
   today: () => { goToPack(s, s.todayIndex); render(); },
+  "plan-frases": () => { goToPack(s, s.todayIndex); render(); document.getElementById("frases")?.scrollIntoView({ behavior: "smooth" }); },
   chatpt: () => { s.showChatPt = !s.showChatPt; render(); },
   saychat: () => playSequence(currentPack(s).chat.map((c) => c.en)),
   "goto-treino": () => {

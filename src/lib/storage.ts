@@ -24,6 +24,9 @@ export interface SavedData {
   songs: Record<string, SongRecord>;
   /** Palavras erradas nas músicas, viram revisão no Treinar (chave = palavra normalizada). */
   earWords: EarWords;
+  /** Último dia em que terminou um diálogo guiado e um treino (pro "Plano de hoje"). */
+  dialogueAt: DateKey | null;
+  practiceAt: DateKey | null;
 }
 
 export interface SongAttempt {
@@ -69,6 +72,7 @@ const MAX_VISITS = 400;
 export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
   reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {}, songs: {}, earWords: {},
+  dialogueAt: null, practiceAt: null,
 });
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */

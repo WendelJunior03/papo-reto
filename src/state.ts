@@ -304,6 +304,7 @@ export function answer(s: AppState, hit: boolean): void {
   if (hit) pr.score++;
   pr.pos++;
   pr.revealed = false;
+  if (pr.pos >= pr.deck.length) s.data.practiceAt = s.today;
   persist(s);
 }
 
@@ -370,6 +371,7 @@ function saveDialogueScore(s: AppState): void {
   const score = dialogueScore(d);
   const prev = s.data.dialogues[id];
   if (!prev || score >= prev.best) s.data.dialogues[id] = { best: score, date: s.today };
+  s.data.dialogueAt = s.today;
   persist(s);
 }
 

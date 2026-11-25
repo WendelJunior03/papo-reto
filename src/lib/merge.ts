@@ -60,6 +60,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
   }
   capEar(earWords);
 
+  const latest = (a?: string | null, b?: string | null): string | null => [a, b].filter((x): x is string => !!x).sort().at(-1) ?? null;
   const starts = [local.start, remote.start].filter((x): x is string => !!x).sort();
   return {
     ...local,
@@ -75,6 +76,8 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
     supported: local.supported || !!remote.supported,
     supportPromptAt: [local.supportPromptAt, remote.supportPromptAt].filter((x): x is string => !!x).sort().at(-1) ?? null,
+    dialogueAt: latest(local.dialogueAt, remote.dialogueAt),
+    practiceAt: latest(local.practiceAt, remote.practiceAt),
     reminderTime: local.reminderAdded ? local.reminderTime : (remote.reminderTime ?? local.reminderTime),
   };
 }

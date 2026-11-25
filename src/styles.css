@@ -618,3 +618,22 @@ nav.tabbar button svg{width:20px;height:20px}
 .install-card p span{font-size:12.5px}
 .install-x{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;color:var(--n600)}
 .install-x svg{width:16px;height:16px}
+/* UX: Plano de hoje */
+.plan{background:var(--surface);border:1px solid var(--n200);border-radius:var(--r);padding:12px 14px 8px;margin-bottom:22px}
+.plan-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.plan-head .mono{color:var(--n600)}
+.plan .steps-bar{margin:8px 0 4px}
+.plan .steps-bar i{background:var(--n200)}
+.plan .steps-bar i.on{background:var(--ultra);box-shadow:none}
+.plan-list{list-style:none;margin:0;padding:0}
+.plan-item{width:100%;display:flex;align-items:center;gap:10px;padding:7px 2px;font-size:14.5px;text-align:left;color:var(--ink)}
+.plan-item>span:nth-child(2){flex:1}
+.plan-list li+li{border-top:1px solid var(--n100)}
+.plan-item.done{color:var(--n600)}
+.plan-item.done>span:nth-child(2){text-decoration:line-through;text-decoration-color:var(--n300)}
+.plan-ck{width:18px;height:18px;flex:none;border-radius:5px;box-shadow:inset 0 0 0 1.5px var(--n300);display:grid;place-items:center}
+.plan-item.done .plan-ck{background:var(--ultra);box-shadow:none;color:#fff}
+.plan-ck svg{width:13px;height:13px}
+.plan-item>svg{width:16px;height:16px;color:var(--ultra)}
+button.plan-item:hover .plan-ck{box-shadow:inset 0 0 0 1.5px var(--ink)}
+.plan-win{font-size:14px;color:var(--n700);padding:6px 2px 4px}

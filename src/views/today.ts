@@ -4,6 +4,7 @@ import { isKnown } from "../lib/srs";
 import { ui } from "../icons";
 import { canPush, isIOS, isStandalone } from "../lib/device";
 import { shortcut } from "./shortcut";
+import { todayPlan, type PlanItem } from "../lib/plan";
 import { currentPack, earReviewsDue, knownInPack, reviewsDue, type AppState } from "../state";
 
 export const TAGS: Record<Tag, [label: string, cls: string]> = {
@@ -85,6 +86,32 @@ function reminderCard(s: AppState): string {
         ${input}
         ${calendar}
       </div>
+    </div>`;
+}
+
+/** Plano de hoje: checklist curto com o que falta; cada item pendente leva pra aba certa. */
+function planCard(s: AppState, due: number, earDue: number): string {
+  const pack = packs[s.todayIndex]!;
+  const done = todayPlan({ data: s.data, today: s.today, packIds: pack.phrases.map((_, i) => phraseId(pack, i)), due: due + earDue });
+  const items: [PlanItem, label: string, act: string][] = [
+    ["frases", "5 frases do dia", "plan-frases"],
+    ["dialogo", "Diálogo", "goto-dialogo"],
+    ["revisao", "Revisão", due ? "goto-treino" : "goto-treino-musica"],
+    ["musica", "Uma música", "goto-musica"],
+  ];
+  const n = items.filter(([k]) => done[k]).length;
+  const rows = items
+    .map(([k, label, act]) =>
+      done[k]
+        ? `<li class="plan-item done"><span class="plan-ck">${ui.tick}</span><span>${label}</span></li>`
+        : `<li><button class="plan-item" data-act="${act}"><span class="plan-ck"></span><span>${label}</span>${ui.arrow}</button></li>`,
+    )
+    .join("");
+  return `<div class="plan">
+      <div class="plan-head"><span class="eyebrow">Plano de hoje</span><span class="mono">${n} de ${items.length}</span></div>
+      <div class="steps-bar" role="img" aria-label="${n} de ${items.length} feitos">${items.map((_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</div>
+      <ul class="plan-list">${rows}</ul>
+      ${n === items.length ? `<p class="plan-win">Dia completo. Amanhã tem mais — <span class="mark">mandou bem!</span></p>` : ""}
     </div>`;
 }
 
@@ -176,9 +203,10 @@ export function renderToday(s: AppState): string {
   </div></section>
 
   <section class="band"><div class="wrap">
+    ${planCard(s, due, earDue)}
     ${reviewBanner}
     ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Frases e cena em áudio, até com a tela bloqueada.", attrs: `data-act="listen-open"`, cls: "listen-entry" })}
-    <div class="sec-head"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
+    <div class="sec-head" id="frases"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
     <div class="list">${cards}</div>
   </div></section>
 
