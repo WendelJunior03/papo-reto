@@ -75,9 +75,13 @@ function roomsHost(ns: DurableObjectNamespace): RoomsHost {
   };
 }
 
+/** Endereço do app no ar (convites e assinatura das notificações apontam pra cá, nunca pra prévia). */
+const PUBLIC_URL = "https://papo-reto.papo-reto.workers.dev";
+
 function config(env: Env): ApiConfig {
   return {
     db: d1Db(env.DB),
+    publicUrl: PUBLIC_URL,
     signupCode: env.SIGNUP_CODE,
     geminiKey: env.GEMINI_API_KEY,
     youtubeKey: env.YOUTUBE_API_KEY,
@@ -88,7 +92,7 @@ function config(env: Env): ApiConfig {
     pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,
     vapid:
       env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
-        ? { publicKey: env.VAPID_PUBLIC_KEY, privateJwk: env.VAPID_PRIVATE_KEY, subject: "https://papo-reto.papo-reto.workers.dev" }
+        ? { publicKey: env.VAPID_PUBLIC_KEY, privateJwk: env.VAPID_PRIVATE_KEY, subject: PUBLIC_URL }
         : undefined,
   };
 }
