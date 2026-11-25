@@ -985,6 +985,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     if (v) void openVideo(v);
   },
   "music-pick-recent": (el) => void musicSearch(el.dataset.id!),
+  "music-suggest": (el) => void musicSearch(el.dataset.q!),
   "music-back": () => {
     destroyPlayer();
     resumeAt = 0;

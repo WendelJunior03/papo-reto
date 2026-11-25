@@ -14,6 +14,23 @@ const LEVELS: [Level, string, string][] = [
   ["dificil", "Difícil", "1 por linha"],
 ];
 
+/** Sugestões pra quem ainda não tem músicas: dicção clara, letra fácil de achar no LRCLIB. */
+const SUGGESTIONS: [song: string, artist: string][] = [
+  ["Perfect", "Ed Sheeran"],
+  ["Someone Like You", "Adele"],
+  ["Count on Me", "Bruno Mars"],
+  ["Yellow", "Coldplay"],
+  ["Way Maker", "Leeland"],
+  ["Goodness of God", "CeCe Winans"],
+];
+
+/** Chips que buscam "<música> <artista>" (só com a busca do app ligada). */
+const suggestionsHtml = (): string =>
+  `<div class="mus-suggest"><span class="eyebrow">Sugestões pra começar</span>
+    <div class="mus-chips">${SUGGESTIONS.map(
+      ([song, artist]) => `<button class="mus-chip" data-act="music-suggest" data-q="${esc(`${song} ${artist}`)}"><b>${esc(song)}</b><small>${esc(artist)}</small></button>`,
+    ).join("")}</div></div>`;
+
 const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 function searchScreen(s: AppState): string {
@@ -49,9 +66,10 @@ function searchScreen(s: AppState): string {
         ? `<div class="evo-card"><div class="evo-head"><span class="eyebrow">Suas músicas</span></div>
             <ul class="recent-songs">${recent
               .map(([id, sg]) => `<li><button class="link-btn" data-act="music-pick-recent" data-id="${esc(id)}">${esc(sg.title)}</button><span class="mono">${sg.best}/${sg.total}</span></li>`)
-              .join("")}</ul></div>`
+              .join("")}</ul>${s.musicSearch && recent.length < 3 ? suggestionsHtml() : ""}</div>`
         : ""
     }
+    ${!results && !recent.length && s.musicSearch ? `<div class="evo-card">${suggestionsHtml()}</div>` : ""}
     <p class="music-credit">Letras sincronizadas do <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a>. Vídeos do YouTube.</p>
   </div></section></div>`;
 }
