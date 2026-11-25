@@ -4,6 +4,7 @@
  */
 import { emptyDay, type DayStats, type SavedData } from "./storage";
 import type { CardState } from "./srs";
+import { capEar } from "./ear";
 
 function betterCard(a: CardState | undefined, b: CardState | undefined): CardState | undefined {
   if (!a) return b;
@@ -51,6 +52,14 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     songs[id] = { ...better, attempts };
   }
 
+  // Palavras das músicas: como no progresso, fica o card mais avançado de cada palavra.
+  const earWords: SavedData["earWords"] = { ...remote.earWords };
+  for (const [k, e] of Object.entries(local.earWords ?? {})) {
+    const r = earWords[k];
+    if (!r || betterCard(e.card, r.card) === e.card) earWords[k] = e;
+  }
+  capEar(earWords);
+
   const starts = [local.start, remote.start].filter((x): x is string => !!x).sort();
   return {
     ...local,
@@ -61,6 +70,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     dialogues,
     history,
     songs,
+    earWords,
     installHintDismissed: local.installHintDismissed || !!remote.installHintDismissed,
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
     supported: local.supported || !!remote.supported,
