@@ -9,6 +9,9 @@
 import { z } from "zod";
 import { detectPortuguese } from "../src/lib/ptdetect";
 import { ROOM_TOPICS } from "../src/lib/room-topics";
+import { CODE_ALPHABET, CODE_LEN, MAX_AUDIO_BYTES, MAX_TEXT, MAX_TURN_MS } from "../src/lib/room-wire";
+
+export { CODE_ALPHABET, CODE_LEN, CODE_RE, MAX_AUDIO_BYTES, MAX_TEXT, MAX_TURN_MS, normalizeCode } from "../src/lib/room-wire";
 
 export type RoomLevel = "iniciante" | "intermediario" | "nativo";
 export const ROOM_LEVELS: readonly RoomLevel[] = ["iniciante", "intermediario", "nativo"];
@@ -20,13 +23,10 @@ export const STRIKES: Record<RoomLevel, number> = { iniciante: 3, intermediario:
 export const ROOM_MS = 10 * 60_000;
 /** Sala que ninguém começou some depois disso. */
 export const WAIT_MS = 30 * 60_000;
-export const MAX_TURN_MS = 15_000;
 /** Folga pro áudio chegar depois que a pessoa solta o botão. */
 export const TURN_GRACE_MS = 5_000;
 /** Uma fala a cada 2 s por pessoa (pedido de palavra). */
 export const TURN_GAP_MS = 2_000;
-export const MAX_AUDIO_BYTES = 300_000;
-export const MAX_TEXT = 600;
 /** Últimas falas guardadas (só texto, pra quem reconecta). O áudio nunca fica guardado. */
 export const LOG_MAX = 60;
 /** Limite geral de mensagens por pessoa (protege a sala de enxurrada). */
@@ -207,11 +207,6 @@ export const RoomCreate = z.object({
 });
 
 /* ---------- código da sala ---------- */
-/** Sem 0/O, 1/I/L: dá pra ditar por telefone. 8 letras = 31⁸ ≈ 850 bilhões de códigos. */
-export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-export const CODE_LEN = 8;
-export const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LEN}}$`);
-
 export function newRoomCode(random: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n))): string {
   let code = "";
   // Rejeita bytes acima do maior múltiplo do alfabeto (sem viés).
@@ -222,12 +217,6 @@ export function newRoomCode(random: (n: number) => Uint8Array = (n) => crypto.ge
     }
   }
   return code;
-}
-
-/** Aceita o que a pessoa digitou ("abcd-efgh", com espaço) e devolve o código limpo, ou null. */
-export function normalizeCode(raw: string): string | null {
-  const code = raw.toUpperCase().replace(/[\s-]/g, "");
-  return CODE_RE.test(code) ? code : null;
 }
 
 /* ---------- estado ---------- */

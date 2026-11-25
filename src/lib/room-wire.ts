@@ -5,6 +5,23 @@
  */
 export const MAX_HEADER_BYTES = 2_000;
 
+/* Limites que o aparelho e o servidor precisam concordar. */
+export const MAX_TURN_MS = 15_000;
+export const MAX_AUDIO_BYTES = 300_000;
+export const MAX_TEXT = 600;
+
+/* ---------- código da sala ---------- */
+/** Sem 0/O, 1/I/L: dá pra ditar por telefone. 8 letras = 31⁸ ≈ 850 bilhões de códigos. */
+export const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const CODE_LEN = 8;
+export const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LEN}}$`);
+
+/** Aceita o que a pessoa digitou ("abcd-efgh", com espaço) e devolve o código limpo, ou null. */
+export function normalizeCode(raw: string): string | null {
+  const code = raw.toUpperCase().replace(/[\s-]/g, "");
+  return CODE_RE.test(code) ? code : null;
+}
+
 export function encodeFrame(header: unknown, audio: Uint8Array): Uint8Array<ArrayBuffer> {
   const head = new TextEncoder().encode(JSON.stringify(header));
   const out = new Uint8Array(new ArrayBuffer(4 + head.length + audio.length));

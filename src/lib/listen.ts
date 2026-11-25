@@ -3,7 +3,7 @@
  * A pessoa fala, e o texto aparece ao vivo. Onde não existir, o app mostra uma caixa
  * de texto, e o microfone do teclado do celular (ditado) faz o mesmo papel.
  */
-interface RecognitionAlternative { transcript: string }
+interface RecognitionAlternative { transcript: string; confidence?: number }
 interface RecognitionResult { isFinal: boolean; length: number; [i: number]: RecognitionAlternative }
 interface RecognitionEvent { resultIndex: number; results: { length: number; [i: number]: RecognitionResult } }
 interface Recognition {
@@ -175,6 +175,7 @@ export function listen(h: ListenHandlers): () => void {
   function begin(): void {
     if (done) return;
     current = session;
+    r.continuous = false; // a escuta "segurando" (Salas ao vivo) liga o contínuo
     nothing = setTimeout(() => finish(true), NOTHING_MS);
     if (tryStart(r)) return;
     // O iPhone ainda não soltou o microfone: espera um pouco e tenta mais uma vez.
@@ -189,6 +190,125 @@ export function listen(h: ListenHandlers): () => void {
   if (!running) begin();
   else void whenReleased().then(begin);
   return () => finish(true);
+}
+
+export interface HoldResult {
+  text: string;
+  /** Média da confiança das partes finais (o Safari às vezes manda 0 = desconhecida). */
+  confidence?: number;
+  error?: string;
+}
+
+/**
+ * Escuta enquanto o botão estiver apertado (Salas ao vivo, walkie-talkie). Usa o MESMO
+ * reconhecedor da escuta normal (no iPhone, dois ao mesmo tempo brigam pelo microfone).
+ * Sem tempo limite por silêncio: quem decide o fim é o soltar do botão. Se o navegador
+ * encerrar sozinho no meio (pausa longa, iPhone), religa enquanto o botão estiver apertado.
+ * Nunca trava: `stop()` sempre resolve, no máximo RELEASE_MS depois, com o que ouviu.
+ */
+export function listenHold(onPartial: (text: string) => void): { stop(): Promise<HoldResult>; cancel(): void } {
+  if (!Ctor) return { stop: () => Promise.resolve({ text: "", error: "Este navegador não reconhece voz." }), cancel: () => {} };
+  finishCurrent?.(false);
+  const r = recognizer();
+
+  let kept: string[] = []; // partes de escutas anteriores (quando religou)
+  let finals: string[] = [];
+  let partial = "";
+  const confs: number[] = [];
+  let error: string | undefined;
+  let held = true;
+  let done = false;
+  let restarts = 0;
+  let onFinished: (() => void) | null = null;
+
+  const text = (): string => [...kept, ...finals.filter(Boolean), partial].join(" ").replace(/\s+/g, " ").trim();
+  const result = (): HoldResult => {
+    const t = text();
+    const conf = confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : undefined;
+    return { text: t, confidence: conf, error: t ? undefined : error };
+  };
+
+  function finish(): void {
+    if (done) return;
+    done = true;
+    held = false;
+    if (current === session) current = null;
+    if (finishCurrent === cancelHold) finishCurrent = null;
+    if (running) {
+      try {
+        r.stop();
+      } catch {
+        // já tinha parado
+      }
+    }
+    onFinished?.();
+  }
+  const cancelHold = (): void => finish();
+
+  const session = {
+    onResult(e: RecognitionEvent) {
+      partial = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i]!;
+        if (res.isFinal) {
+          finals[i] = res[0]!.transcript.trim();
+          if (res[0]!.confidence) confs.push(res[0]!.confidence);
+        } else partial += res[0]!.transcript;
+      }
+      onPartial(text());
+    },
+    onError(code: string) {
+      if (code === "aborted" || code === "no-speech") return;
+      error = ERRORS[code] ?? `Não consegui ouvir (${code}).`;
+    },
+    onEnd() {
+      if (held && !done && restarts < 3) {
+        // Encerrou sozinho com o botão ainda apertado: guarda o que já ouviu e religa.
+        kept = [...kept, ...finals.filter(Boolean), ...(partial.trim() ? [partial.trim()] : [])];
+        finals = [];
+        partial = "";
+        restarts++;
+        if (tryStart(r)) return;
+      }
+      finish();
+    },
+  };
+
+  function begin(): void {
+    if (done) return;
+    if (!held) return finish(); // soltou antes de o microfone liberar
+    current = session;
+    r.continuous = true;
+    if (tryStart(r)) return;
+    setTimeout(() => {
+      if (done) return;
+      if (!tryStart(r)) {
+        error = "O microfone estava ocupado.";
+        finish();
+      }
+    }, 400);
+  }
+
+  finishCurrent = cancelHold;
+  if (!running) begin();
+  else void whenReleased().then(begin);
+
+  return {
+    stop: () =>
+      new Promise<HoldResult>((resolve) => {
+        held = false;
+        if (done) return resolve(result());
+        onFinished = () => resolve(result());
+        if (!running) return finish();
+        try {
+          r.stop(); // o onend entrega (com as últimas palavras)
+        } catch {
+          finish();
+        }
+        setTimeout(finish, RELEASE_MS); // o Safari às vezes não dispara o fim
+      }),
+    cancel: cancelHold,
+  };
 }
 
 /** Cancela a escuta atual sem entregar resultado (ao trocar de tela, por exemplo). */
