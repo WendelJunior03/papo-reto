@@ -736,7 +736,11 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   today: () => { goToPack(s, s.todayIndex); render(); },
   chatpt: () => { s.showChatPt = !s.showChatPt; render(); },
   saychat: () => playSequence(currentPack(s).chat.map((c) => c.en)),
-  "goto-treino": () => setTab("treino"),
+  "goto-treino": () => {
+    // O aviso de revisões é de frases: abre no modo Falar, mesmo que o último usado tenha sido Músicas.
+    if (s.practice?.mode === "musica") startPractice(s, "falar");
+    setTab("treino");
+  },
   "goto-treino-musica": () => {
     startPractice(s, "musica");
     setTab("treino");

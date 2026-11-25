@@ -61,8 +61,11 @@ export function renderPractice(s: AppState): string {
   const music = pr.mode === "musica";
 
   const head = `<div class="sec-head"><span class="eyebrow">Treino · ${music ? "palavras das músicas" : `${esc(currentPack(s).title)}${extra > 0 ? ` + ${extra} revisões` : ""}`}</span>
-      <h2>Do português <span class="mark">pra boca.</span></h2>
-      <p>Nada de escrever. Você fala ou escuta, vira o card e confere.</p></div>
+      ${music
+        ? `<h2>Do ouvido <span class="mark">pra memória.</span></h2>
+           <p>As palavras que escaparam nas músicas voltam aqui. Ouça, lembre o trecho e vire o card.</p></div>`
+        : `<h2>Do português <span class="mark">pra boca.</span></h2>
+           <p>Nada de escrever. Você fala ou escuta, vira o card e confere.</p></div>`}
     <div class="tabs-mode" role="group" aria-label="Modo de treino">
       <button class="tab" data-act="mode" data-mode="falar" aria-pressed="${pr.mode === "falar"}">${ui.mic}Falar</button>
       <button class="tab" data-act="mode" data-mode="ouvir" aria-pressed="${pr.mode === "ouvir"}">${ui.ear}Ouvir</button>
