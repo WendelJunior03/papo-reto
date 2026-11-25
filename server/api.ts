@@ -43,6 +43,7 @@ import { HHMM, validTimeZone } from "./reminders";
 import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInfo } from "./music";
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 import { countStory, DEFAULT_STORIES_PER_DAY, handleStory, storiesToday } from "./story";
+import { checkSignup, DEFAULT_SIGNUP_LIMITS, networkKey, signupDone, type SignupLimits } from "./signup-guard";
 import { CODE_RE, newRoomCode, RoomCreate, type RoomInit } from "./room-core";
 
 /**
@@ -83,6 +84,10 @@ export interface ApiConfig {
   rooms?: RoomsHost;
   /** Endereço oficial do app: o link de convite usa ele mesmo quando a pessoa está numa prévia. */
   publicUrl?: string;
+  /** Cadastro aberto (OPEN_SIGNUP): o código de convite vira opcional. */
+  openSignup?: boolean;
+  /** Limites do cadastro (padrão: 3 contas/h por rede, 10 tentativas/h, 100 contas/dia). */
+  signupLimits?: Partial<SignupLimits>;
 }
 
 const serverAuthOf = (cfg: ApiConfig): ChatAuth | null =>
@@ -117,7 +122,13 @@ const Username = z
   );
 const Password = z.string().min(8, "A senha precisa de pelo menos 8 caracteres.").max(128);
 
-const Signup = z.object({ username: Username, password: Password, code: z.string().max(100) });
+const Signup = z.object({
+  username: Username,
+  password: Password,
+  code: z.string().max(100).default(""),
+  /** Campo invisível na tela: gente não preenche, robô sim. */
+  website: z.string().max(200).optional(),
+});
 const Login = z.object({
   username: z.string().transform((s) => s.trim().replace(/\s+/g, " ")).pipe(z.string().min(1).max(40)),
   password: z.string().min(1).max(128),
@@ -177,21 +188,35 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
   }
 
   switch (route) {
+    case "GET /api/auth/signup-info":
+      return json({ open: !!cfg.openSignup, closed: !cfg.openSignup && !cfg.signupCode });
+
     case "POST /api/auth/signup": {
       const b = await body(req, Signup);
       if (b instanceof Response) return b;
-      if (!cfg.signupCode) return json({ error: "O cadastro está fechado. Peça uma conta pra quem administra o app." }, 403);
-      // Código geral (comparado em tempo constante) ou o convite pessoal de um amigo.
+      if (!cfg.openSignup && !cfg.signupCode) return json({ error: "O cadastro está fechado. Peça uma conta pra quem administra o app." }, 403);
+      // Limite por rede e teto do dia (a tentativa já fica registrada aqui).
+      const net = await networkKey(req);
+      const blocked = await checkSignup(db, net, { ...DEFAULT_SIGNUP_LIMITS, ...cfg.signupLimits });
+      if (blocked) return json({ error: blocked }, 429);
+      if (b.website) return json({ error: "Não deu pra criar a conta agora." }, 400);
+      // Código: opcional com o cadastro aberto; se vier, tem que ser o geral (tempo constante) ou o convite de um amigo.
       const code = b.code.trim();
-      const general = sameText(code, cfg.signupCode);
-      const inviter = general ? null : await inviterByCode(db, code);
-      if (!general && inviter === null) return json({ error: "Código de convite incorreto." }, 403);
+      let inviter: number | null = null;
+      if (code) {
+        const general = !!cfg.signupCode && sameText(code, cfg.signupCode);
+        inviter = general ? null : await inviterByCode(db, code);
+        if (!general && inviter === null) return json({ error: "Código de convite incorreto." }, 403);
+      } else if (!cfg.openSignup) {
+        return json({ error: "Informe o código de convite." }, 403);
+      }
       const exists = await db.first("SELECT 1 FROM users WHERE username = ?", b.username);
       if (exists) return json({ error: "Esse usuário já existe. Escolha outro." }, 409);
       const { hash, salt } = await hashPassword(b.password);
       await db.run("INSERT INTO users (username, pass_hash, pass_salt) VALUES (?, ?, ?)", b.username, hash, salt);
       const user = (await db.first<{ id: number }>("SELECT id FROM users WHERE username = ?", b.username))!;
       if (inviter !== null) await recordInvitedBy(db, user.id, inviter);
+      await signupDone(db, net);
       const s = await createSession(db, user.id);
       return json({ username: b.username }, 201, { "Set-Cookie": sessionCookie(req, s.token, s.expires) });
     }

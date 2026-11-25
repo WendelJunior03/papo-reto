@@ -57,8 +57,9 @@ export const api = {
   getReminder: () => call<Reminder | null>("GET", "reminder"),
   putReminder: (r: Reminder) => call<Reminder>("PUT", "reminder", r),
   login: (username: string, password: string) => call<{ username: string }>("POST", "auth/login", { username, password }),
-  signup: (username: string, password: string, code: string) =>
-    call<{ username: string }>("POST", "auth/signup", { username, password, code }),
+  signup: (username: string, password: string, code: string, website = "") =>
+    call<{ username: string }>("POST", "auth/signup", { username, password, code, ...(website ? { website } : {}) }),
+  signupInfo: () => call<{ open: boolean; closed: boolean }>("GET", "auth/signup-info"),
   logout: () => call<{ ok: true }>("POST", "auth/logout"),
   getProgress: () => call<{ data: Partial<SavedData> | null; updatedAt: string | null }>("GET", "progress"),
   adminStats: () => call<AdminStats>("GET", "admin/stats"),

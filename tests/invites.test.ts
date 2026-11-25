@@ -35,7 +35,7 @@ async function signup(username: string, code = "convite") {
 const codeOf = async (c: ReturnType<typeof client>) => String((await c("GET", "invite")).data.code);
 
 beforeEach(() => {
-  cfg = { db: bunDb(":memory:"), signupCode: "convite", adminUsers: parseAdmins("dono") };
+  cfg = { db: bunDb(":memory:"), signupCode: "convite", adminUsers: parseAdmins("dono"), signupLimits: { perHour: 100, attemptsPerHour: 100 } };
 });
 
 describe("código de convite", () => {

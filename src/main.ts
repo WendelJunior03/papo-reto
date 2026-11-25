@@ -79,7 +79,9 @@ function checkKnownMilestone(before: number): void {
 }
 
 /* ---------- login ---------- */
-const auth: AuthView = { mode: "login", error: null, busy: false, username: "", code: "" };
+const auth: AuthView = { mode: "login", error: null, busy: false, username: "", code: "", open: false };
+/** Pergunta uma vez se o cadastro está aberto (muda o rótulo do código pra "opcional"). */
+let signupInfoAsked = false;
 
 /** Link de convite (?convite=CODE): lido uma vez, já abre "Criar conta" com o código, e sai da barra de endereço. */
 const inviteFromUrl = (() => {
@@ -105,6 +107,14 @@ if (inviteFromUrl) {
 }
 
 function renderAuthScreen(): void {
+  if (!signupInfoAsked) {
+    signupInfoAsked = true;
+    void api.signupInfo().then((i) => {
+      if (i.open === auth.open) return;
+      auth.open = i.open;
+      if (document.body.classList.contains("auth") && !auth.busy) renderAuthScreen();
+    }).catch(() => {});
+  }
   document.body.classList.add("auth");
   showOnboarding(0);
   app.innerHTML = renderAuth(auth);
@@ -119,6 +129,7 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
   const password = String(f.get("password") ?? "");
   auth.username = username;
   if (auth.mode === "signup") auth.code = String(f.get("code") ?? "").trim();
+  const website = String(f.get("website") ?? "");
   if (!username || !password) {
     auth.error = "Preencha usuário e senha.";
     return renderAuthScreen();
@@ -129,7 +140,7 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
   try {
     const res =
       auth.mode === "signup"
-        ? await api.signup(username, password, auth.code)
+        ? await api.signup(username, password, auth.code, website)
         : await api.login(username, password);
     auth.busy = false;
     auth.code = "";
