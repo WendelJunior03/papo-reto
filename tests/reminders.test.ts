@@ -65,7 +65,7 @@ describe("mensagem", () => {
     expect(dueReviews(JSON.stringify({ visits: [] }), "2026-11-25")).toBe(0);
   });
   test("texto com e sem revisões", () => {
-    expect(reminderMessage(0)).toEqual({ title: "Papo Reto", body: "Seu pacote do dia chegou!", url: "./#hoje" });
+    expect(reminderMessage(0)).toEqual({ title: "Papo Reto English", body: "Seu pacote do dia chegou!", url: "./#hoje" });
     expect(reminderMessage(1).body).toBe("Seu pacote do dia chegou! E tem 1 revisão te esperando.");
     expect(reminderMessage(4).body).toBe("Seu pacote do dia chegou! E tem 4 revisões te esperando.");
   });
@@ -125,7 +125,7 @@ describe("envio pelo cron (sem internet: o fetch é simulado)", () => {
     await schedulePush(db, 1, "ai-ready", 1000);
     expect(await sendDuePushes(db, v, 2000)).toBe(1);
     expect(await db.first("SELECT title, body, url FROM push_outbox WHERE kind = 'ai-ready'")).toEqual({
-      title: "Papo Reto",
+      title: "Papo Reto English",
       body: "Sua conversa com a IA liberou! Bora praticar mais 7 minutos?",
       url: "./#ia",
     });

@@ -62,7 +62,7 @@ export interface PushMessage {
 
 /** Textos dos avisos agendados (push_jobs), por tipo. */
 export const JOB_MESSAGES: Record<string, PushMessage> = {
-  "ai-ready": { title: "Papo Reto", body: "Sua conversa com a IA liberou! Bora praticar mais 7 minutos?", url: "./#ia" },
+  "ai-ready": { title: "Papo Reto English", body: "Sua conversa com a IA liberou! Bora praticar mais 7 minutos?", url: "./#ia" },
 };
 
 /** Guarda o texto (só o último de cada tipo por usuário). */
