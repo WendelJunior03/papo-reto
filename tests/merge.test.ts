@@ -35,3 +35,17 @@ test("janela do PIX: uma vez por dia, só pra quem não apoiou e se tiver PIX", 
 test("quem apoiou num aparelho fica como apoiador nos outros", () => {
   expect(mergeData({ ...emptyData() }, { supported: true }).supported).toBe(true);
 });
+
+import { wasOnboarded } from "../src/lib/storage";
+
+test("boas-vindas: quem já tinha progresso não vê de novo", () => {
+  expect(wasOnboarded({})).toBe(false);
+  expect(wasOnboarded({ visits: ["2026-11-19"] })).toBe(false);
+  expect(wasOnboarded({ progress: { a: { box: 1, due: "2026-11-20" } } })).toBe(true);
+  expect(wasOnboarded({ visits: ["2026-11-18", "2026-11-19"] })).toBe(true);
+  expect(wasOnboarded({ visits: ["2026-11-18", "2026-11-19"], onboarded: false })).toBe(false);
+  // Aparelho novo (sem nada) + conta antiga no servidor: não mostra.
+  expect(mergeData({ ...emptyData() }, { progress: { a: { box: 1, due: "2026-11-20" } } }).onboarded).toBe(true);
+  expect(mergeData({ ...emptyData() }, { onboarded: true }).onboarded).toBe(true);
+  expect(mergeData({ ...emptyData() }, { visits: [] }).onboarded).toBe(false);
+});

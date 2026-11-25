@@ -41,15 +41,19 @@ const mmss = (ms: number): string => {
 };
 const clock = (ms: number): string => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-/** Barra da sessão com a IA do app: pronta, contagem regressiva ou espera. */
+/**
+ * Linha única de status da IA do app (pronta ou contagem regressiva) ou o cartão de espera.
+ * O link "usar minha chave" vem junto enquanto o formulário da chave está fechado.
+ */
 function sessionBar(s: AppState): string {
   if (s.aiKey) return "";
   const st = s.aiSession;
+  const own = s.aiSettings.open ? "" : `<button class="link-btn subtle ai-own-key" data-act="ai-key-edit">usar minha chave</button>`;
   if (!st || st.state === "ready") {
-    return `<div class="ai-session"><span class="st tr">Sessão de ${st?.state === "ready" ? st.minutes : 7} min</span><span>O tempo começa na sua primeira mensagem.</span></div>`;
+    return `<div class="ai-session"><span class="st tr">IA do app</span><span>${st?.state === "ready" ? st.minutes : 7} min de conversa · o tempo começa na sua 1ª mensagem</span>${own}</div>`;
   }
   if (st.state === "active") {
-    return `<div class="ai-session live"><span class="st ok">Conversando</span><span><b id="ai-timer">${mmss(st.endsAt - Date.now())}</b> restantes</span></div>`;
+    return `<div class="ai-session live"><span class="st ok">Conversando</span><span><b id="ai-timer">${mmss(st.endsAt - Date.now())}</b> restantes</span>${own}</div>`;
   }
   const mins = Math.max(1, Math.ceil((st.availableAt - Date.now()) / 60_000));
   return `<div class="ai-cooldown">
@@ -63,6 +67,7 @@ function sessionBar(s: AppState): string {
           ? `<button class="btn btn-am" data-act="ai-notify">Me avise quando liberar</button>`
           : ""
     }
+    ${own}
   </div>`;
 }
 
@@ -128,7 +133,7 @@ export function renderAi(s: AppState): string {
             </div>
           </div>`
     }
-    ${needsKey || s.aiSettings.open || s.aiKey ? keyCard(s) : `<div class="ai-key-line"><span class="st tr">IA do app</span><span>Gemini · sessões de 7 min.</span><button class="link-btn" data-act="ai-key-edit">Usar minha chave</button></div>`}
+    ${needsKey || s.aiSettings.open || s.aiKey ? keyCard(s) : ""}
     ${needsKey ? "" : sessionBar(s)}
     ${
       needsKey

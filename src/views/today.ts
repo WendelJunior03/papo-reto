@@ -3,6 +3,8 @@ import { esc, highlight, pad } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import { ui } from "../icons";
 import { canPush, isIOS, isStandalone } from "../lib/device";
+import { shortcut } from "./shortcut";
+import { todayPlan, type PlanItem } from "../lib/plan";
 import { currentPack, earReviewsDue, knownInPack, reviewsDue, type AppState } from "../state";
 
 export const TAGS: Record<Tag, [label: string, cls: string]> = {
@@ -87,6 +89,32 @@ function reminderCard(s: AppState): string {
     </div>`;
 }
 
+/** Plano de hoje: checklist curto com o que falta; cada item pendente leva pra aba certa. */
+function planCard(s: AppState, due: number, earDue: number): string {
+  const pack = packs[s.todayIndex]!;
+  const done = todayPlan({ data: s.data, today: s.today, packIds: pack.phrases.map((_, i) => phraseId(pack, i)), due: due + earDue });
+  const items: [PlanItem, label: string, act: string][] = [
+    ["frases", "5 frases do dia", "plan-frases"],
+    ["dialogo", "Diálogo", "goto-dialogo"],
+    ["revisao", "Revisão", due ? "goto-treino" : "goto-treino-musica"],
+    ["musica", "Uma música", "goto-musica"],
+  ];
+  const n = items.filter(([k]) => done[k]).length;
+  const rows = items
+    .map(([k, label, act]) =>
+      done[k]
+        ? `<li class="plan-item done"><span class="plan-ck">${ui.tick}</span><span>${label}</span></li>`
+        : `<li><button class="plan-item" data-act="${act}"><span class="plan-ck"></span><span>${label}</span>${ui.arrow}</button></li>`,
+    )
+    .join("");
+  return `<div class="plan">
+      <div class="plan-head"><span class="eyebrow">Plano de hoje</span><span class="mono">${n} de ${items.length}</span></div>
+      <div class="steps-bar" role="img" aria-label="${n} de ${items.length} feitos">${items.map((_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("")}</div>
+      <ul class="plan-list">${rows}</ul>
+      ${n === items.length ? `<p class="plan-win">Dia completo. Amanhã tem mais — <span class="mark">mandou bem!</span></p>` : ""}
+    </div>`;
+}
+
 export function renderToday(s: AppState): string {
   const pack = currentPack(s);
   const k = knownInPack(s, s.packIndex);
@@ -105,7 +133,9 @@ export function renderToday(s: AppState): string {
       const f = p.flip;
       const [label, cls] = TAGS[p.tag];
       return `<article class="card ${kn ? "known" : ""}">
-        <div class="card-top"><span class="n">${pad(i + 1)} / 05</span><span class="st ${cls}">${label}</span></div>
+        <div class="card-top"><span class="n">${pad(i + 1)} / 05</span><span class="st ${cls}">${label}</span>
+          <button class="known-tog" data-act="known" data-id="${id}" aria-pressed="${kn}" aria-label="Sei essa" title="${kn ? "Já sei (toque pra desmarcar)" : "Sei essa"}"><span class="known-lb">${kn ? "Já sei" : "Sei essa"}</span><i>${ui.tick}</i></button>
+        </div>
         <p class="en" lang="en">${highlight(p.en)}</p>
         <div class="ptl"><span class="mono">PT</span><p>${esc(p.pt)}</p></div>
         ${open ? `<div class="suggest"><span class="mono">Como o nativo usa</span><div>${p.note}</div>${examples(id, p.examples)}</div>` : ""}
@@ -121,12 +151,11 @@ export function renderToday(s: AppState): string {
               </div>`
             : ""
         }
-        <div class="acts">
-          <button class="btn btn-ultra" data-act="say" data-id="${id}">${ui.play}Ouvir</button>
-          <button class="btn btn-ghost btn-ic" data-act="slow" data-id="${id}" aria-label="Ouvir devagar" title="Devagar">${ui.slow}</button>
-          <button class="btn btn-ghost" data-act="tip" data-id="${id}" aria-expanded="${open}">${ui.tip}Dica e exemplos</button>
-          ${f ? `<button class="btn btn-ghost" data-act="flip" data-id="${id}" aria-expanded="${flipOpen}">${ui.flip}${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}</button>` : ""}
-          <button class="btn ${kn ? "btn-am" : "btn-ghost"} push" data-act="known" data-id="${id}" aria-pressed="${kn}">${ui.tick}${kn ? "Já sei" : "Sei essa"}</button>
+        <div class="card-acts">
+          <button class="ic-act main" data-act="say" data-id="${id}" aria-label="Ouvir" title="Ouvir"><i>${ui.play}</i><span>Ouvir</span></button>
+          <button class="ic-act" data-act="slow" data-id="${id}" aria-label="Ouvir devagar" title="Ouvir devagar"><i>${ui.slow}</i><span>Devagar</span></button>
+          <button class="ic-act" data-act="tip" data-id="${id}" aria-expanded="${open}" aria-label="Dica e exemplos" title="Dica e exemplos"><i>${ui.tip}</i><span>Dica</span></button>
+          ${f ? `<button class="ic-act" data-act="flip" data-id="${id}" aria-expanded="${flipOpen}" aria-label="${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}" title="${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}"><i>${ui.flip}</i><span>${f.kind === "question" ? "Pergunta" : "Resposta"}</span></button>` : ""}
         </div>
       </article>`;
     })
@@ -174,12 +203,10 @@ export function renderToday(s: AppState): string {
   </div></section>
 
   <section class="band"><div class="wrap">
+    ${planCard(s, due, earDue)}
     ${reviewBanner}
-    <button class="review listen-entry" data-act="listen-open">
-      <span class="st tr">Ouvir no carro</span>
-      <span class="txt">As frases e a cena em áudio, com tradução. Toca até com a tela bloqueada.</span>${ui.arrow}
-    </button>
-    <div class="sec-head"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
+    ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Frases e cena em áudio, até com a tela bloqueada.", attrs: `data-act="listen-open"`, cls: "listen-entry" })}
+    <div class="sec-head" id="frases"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
     <div class="list">${cards}</div>
   </div></section>
 

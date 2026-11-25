@@ -41,12 +41,13 @@ import {
   stopCar, toggle as carToggle, wakeLockAvailable,
 } from "./lib/carplayer";
 import { renderAdmin } from "./views/admin";
+import { ONBOARDING_STEPS, renderOnboarding } from "./views/onboarding";
 
 let s!: AppState;
 const app = document.getElementById("app")!;
 const stats = document.getElementById("stats")!;
 const toastEl = document.getElementById("toast")!;
-const installBtn = document.getElementById("install") as HTMLButtonElement;
+const installBanner = document.getElementById("install-banner")!;
 const sheet = document.getElementById("sheet")!;
 
 /** Copia pro clipboard; se o navegador não deixar, seleciona o texto pra copiar na mão. */
@@ -72,6 +73,7 @@ const auth: AuthView = { mode: "login", error: null, busy: false, username: "" }
 
 function renderAuthScreen(): void {
   document.body.classList.add("auth");
+  showOnboarding(0);
   app.innerHTML = renderAuth(auth);
   const cv = document.getElementById("dots");
   if (cv instanceof HTMLCanvasElement) drawDots(cv, 3);
@@ -177,9 +179,12 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     void checkPushOn().then(loadReminder);
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
-    // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou).
-    openDailySupport(s);
+    // Primeira entrada: boas-vindas (só depois de juntar com o servidor, pra conta antiga em aparelho novo não ver).
+    s.onboarding = s.data.onboarded ? 0 : 1;
+    // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou), menos no dia das boas-vindas.
+    if (!s.onboarding) openDailySupport(s);
     render();
+    showOnboarding();
     await pushNow();
   } catch {
     dirty = true; // sem conexão: sobe quando voltar
@@ -204,11 +209,32 @@ async function boot(): Promise<void> {
   }
 }
 
+/* ---------- boas-vindas ---------- */
+const onboardEl = document.body.appendChild(document.createElement("div"));
+
+/** Desenha (ou fecha) as boas-vindas; o resto da tela fica inerte enquanto ela está aberta. */
+function showOnboarding(step = s.onboarding): void {
+  const open = !!step;
+  onboardEl.innerHTML = renderOnboarding(step);
+  document.body.classList.toggle("onb-open", open);
+  document.querySelectorAll("header.top, main, nav.tabbar").forEach((el) => el.toggleAttribute("inert", open));
+  if (open) document.getElementById("onb-next")?.focus();
+}
+
+function finishOnboarding(): void {
+  s.onboarding = 0;
+  s.data.onboarded = true;
+  persist(s);
+  showOnboarding();
+}
+
 /* ---------- render ---------- */
 function render(): void {
   const days = streakDays(s);
-  stats.innerHTML = `<button class="stats-btn" data-act="goto-evolucao" aria-label="Ver sua evolução">
-    <span class="st at">${days} ${days === 1 ? "dia" : "dias"}</span><span class="st ok">${knownCount(s)}</span>${ui.chart}</button>`;
+  const known = knownCount(s);
+  // Uma pílula só: sequência · frases dominadas; toque abre a Evolução.
+  stats.innerHTML = `<button class="stats-pill" data-act="goto-evolucao" aria-label="${days} ${days === 1 ? "dia" : "dias"} seguidos, ${known} ${known === 1 ? "frase" : "frases"}. Ver sua evolução">
+    <span class="sp-at">${days}</span><i aria-hidden="true">·</i><span class="sp-ok">${known} ${known === 1 ? "frase" : "frases"}</span>${ui.chart}</button>`;
   if (s.tab === "dialogo") ensureDialogue(s);
   if (s.tab === "ouvir" && !carStatus().playlist) loadListen(false);
   // Música tocando: só atualiza as partes que mudam (redesenhar pararia o player).
@@ -233,7 +259,14 @@ function render(): void {
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
   );
-  installBtn.hidden = !s.canInstall;
+  // Instalar: cartão discreto só no Hoje; "Agora não" guarda junto com a dica do iPhone.
+  installBanner.innerHTML = s.canInstall && !s.data.installHintDismissed && s.tab === "hoje"
+    ? `<div class="wrap"><div class="install-card">${ui.download}
+        <p><b>Instale o Papo Reto</b><span>Abre como app e funciona sem internet.</span></p>
+        <button class="btn btn-am btn-sm" data-act="install">Instalar</button>
+        <button class="install-x" data-act="dismiss-ios" aria-label="Agora não">${ui.x}</button>
+      </div></div>`
+    : "";
   const cv = document.getElementById("dots");
   if (cv instanceof HTMLCanvasElement) drawDots(cv, s.packIndex);
   sheet.innerHTML = supportSheet(s) + supportNudge(s);
@@ -867,6 +900,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   prev: () => { goToPack(s, s.packIndex - 1); render(); },
   next: () => { goToPack(s, s.packIndex + 1); render(); },
   today: () => { goToPack(s, s.todayIndex); render(); },
+  "plan-frases": () => { goToPack(s, s.todayIndex); render(); document.getElementById("frases")?.scrollIntoView({ behavior: "smooth" }); },
   chatpt: () => { s.showChatPt = !s.showChatPt; render(); },
   saychat: () => playSequence(currentPack(s).chat.map((c) => c.en)),
   "goto-treino": () => {
@@ -880,6 +914,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     playCurrent();
   },
   "dismiss-ios": () => { s.data.installHintDismissed = true; persist(s); render(); },
+  install: () => void promptInstall(),
   pick: (el) => { goToPack(s, Number(el.dataset.pack)); setTab("hoje"); },
   logout: () => void logout(),
   "goto-dialogo": () => setTab("dialogo"),
@@ -974,6 +1009,13 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     if (v) void openVideo(v);
   },
   "music-pick-recent": (el) => void musicSearch(el.dataset.id!),
+  "music-suggest": (el) => void musicSearch(el.dataset.q!),
+  "onb-next": () => {
+    if (s.onboarding >= ONBOARDING_STEPS) return finishOnboarding();
+    s.onboarding++;
+    showOnboarding();
+  },
+  "onb-skip": () => finishOnboarding(),
   "music-back": () => {
     destroyPlayer();
     resumeAt = 0;
@@ -1235,6 +1277,7 @@ document.addEventListener("input", (e) => {
 
 document.addEventListener("keydown", (e) => {
   const el = e.target as HTMLElement;
+  if (e.key === "Escape" && s?.onboarding) return finishOnboarding();
   if (e.key === "Escape" && s?.support.open) {
     s.support.open = false;
     return render();
@@ -1285,14 +1328,14 @@ window.addEventListener("appinstalled", () => {
   render();
   toast("App instalado", true);
 });
-installBtn.addEventListener("click", async () => {
+async function promptInstall(): Promise<void> {
   if (!installEvent) return;
   await installEvent.prompt();
   await installEvent.userChoice;
   installEvent = null;
   s.canInstall = false;
   render();
-});
+}
 
 if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {

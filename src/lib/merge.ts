@@ -2,7 +2,7 @@
  * Junta o progresso deste aparelho com o salvo no servidor (ex.: usou no celular e no computador).
  * Regra: nada se perde — fica o mais avançado de cada lado.
  */
-import { emptyDay, type DayStats, type SavedData } from "./storage";
+import { emptyDay, wasOnboarded, type DayStats, type SavedData } from "./storage";
 import type { CardState } from "./srs";
 import { capEar } from "./ear";
 
@@ -60,6 +60,7 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
   }
   capEar(earWords);
 
+  const latest = (a?: string | null, b?: string | null): string | null => [a, b].filter((x): x is string => !!x).sort().at(-1) ?? null;
   const starts = [local.start, remote.start].filter((x): x is string => !!x).sort();
   return {
     ...local,
@@ -74,7 +75,10 @@ export function mergeData(local: SavedData, remote: Partial<SavedData> | null): 
     installHintDismissed: local.installHintDismissed || !!remote.installHintDismissed,
     reminderAdded: local.reminderAdded || !!remote.reminderAdded,
     supported: local.supported || !!remote.supported,
+    onboarded: local.onboarded || wasOnboarded(remote),
     supportPromptAt: [local.supportPromptAt, remote.supportPromptAt].filter((x): x is string => !!x).sort().at(-1) ?? null,
+    dialogueAt: latest(local.dialogueAt, remote.dialogueAt),
+    practiceAt: latest(local.practiceAt, remote.practiceAt),
     reminderTime: local.reminderAdded ? local.reminderTime : (remote.reminderTime ?? local.reminderTime),
   };
 }
