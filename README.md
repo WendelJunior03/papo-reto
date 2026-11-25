@@ -57,6 +57,10 @@ O app exige login (usuário e senha). Banco **SQLite**: no Mac é o arquivo `dat
 
 Configuração local: o Bun lê o `.env` sozinho (veja `.env.example`).
 
+### Painel do dono
+
+Quem estiver em `ADMIN_USERS` (usuários separados por vírgula, sem diferenciar maiúscula) vê o botão **Painel do dono** no card da conta (aba Situações): usuários, ativos hoje/7/30 dias, mensagens com a IA do app (o custo do Gemini), apoiadores, inscritos em notificação, gráficos de cadastros e de mensagens por dia e a lista de usuários. Como o app não tem "esqueci a senha", o painel gera uma **senha temporária** (mostrada uma única vez) e derruba as sessões abertas da pessoa. As rotas `/api/admin/*` conferem o dono no servidor (403 pra quem não é). Precisa da migração `0005_admin.sql` (tabela `user_activity` e índice em `ai_usage`).
+
 O `wrangler` fica fixo no projeto (`devDependencies`, versão exata) pra o build do Cloudflare e o Mac usarem a mesma versão.
 
 Publicar no Cloudflare:

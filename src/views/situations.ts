@@ -33,6 +33,7 @@ export function renderSituations(s: AppState): string {
       <span class="avatar">${esc(s.user.slice(0, 1).toUpperCase())}</span>
       <div><span class="mono">Sua conta</span><b>${esc(s.user)}</b><small>Progresso salvo na conta — entre em qualquer aparelho.</small></div>
       <button class="btn btn-ghost btn-sm" data-act="logout">Sair</button>
+      ${s.admin ? `<button class="btn btn-ghost btn-sm account-admin" data-act="goto-admin">${ui.chart}Painel do dono</button>` : ""}
     </div>
   </div></section></div>`;
 }

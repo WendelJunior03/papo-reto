@@ -6,6 +6,7 @@
 import { handleApi, type ApiConfig } from "../server/api";
 import { sendDuePushes } from "../server/push";
 import { d1Db, type D1Database } from "../server/db";
+import { parseAdmins } from "../server/admin";
 
 interface Env {
   DB: D1Database;
@@ -19,6 +20,8 @@ interface Env {
   PIX_KEY?: string;
   PIX_NAME?: string;
   PIX_CITY?: string;
+  /** Donos do app, separados por vírgula (veem o painel do dono). */
+  ADMIN_USERS?: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -56,6 +59,7 @@ function config(env: Env): ApiConfig {
     youtubeKey: env.YOUTUBE_API_KEY,
     anthropicKey: env.ANTHROPIC_API_KEY,
     openaiKey: env.OPENAI_API_KEY,
+    adminUsers: parseAdmins(env.ADMIN_USERS),
     pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,
     vapid:
       env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY

@@ -4,6 +4,7 @@ import { safePath } from "./static";
 import index from "../src/index.html";
 import { handleApi } from "../server/api";
 import { bunDb } from "../server/db-bun";
+import { parseAdmins } from "../server/admin";
 
 const pub = join(import.meta.dir, "../public");
 const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: process.env.GEMINI_API_KEY,
@@ -12,6 +13,7 @@ const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: proce
   vapid: process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY
     ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateJwk: process.env.VAPID_PRIVATE_KEY, subject: "https://papo-reto.papo-reto.workers.dev" }
     : undefined,
+  adminUsers: parseAdmins(process.env.ADMIN_USERS),
   pix: process.env.PIX_KEY ? { key: process.env.PIX_KEY, name: process.env.PIX_NAME ?? "", city: process.env.PIX_CITY ?? "" } : undefined,
 };
 

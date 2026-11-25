@@ -32,6 +32,7 @@ import { loadYouTube, YT_ERRORS, type YTPlayer } from "./lib/youtube";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
 import { renderSituations } from "./views/situations";
+import { renderAdmin } from "./views/admin";
 
 let s!: AppState;
 const app = document.getElementById("app")!;
@@ -87,8 +88,9 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
         ? await api.signup(username, password, String(f.get("code") ?? ""))
         : await api.login(username, password);
     auth.busy = false;
-    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false }));
+    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false, admin: false }));
     musicSearchOn = !!me.musicSearch;
+    adminOn = !!me.admin;
     await start(res.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     auth.busy = false;
@@ -139,6 +141,8 @@ window.addEventListener("online", () => {
 
 /** Entra no app como `user`: junta o progresso do aparelho com o da conta e desenha. */
 let musicSearchOn = false;
+/** Dono do app (do /api/me). Só mostra o botão do painel; o servidor confere de novo. */
+let adminOn = false;
 async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
   setLastUser(user);
   if (online) savePix(pix);
@@ -146,15 +150,22 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
   s = createState(user, new Date(), undefined, serverAi, pix);
   s.canInstall = installEvent !== null;
   s.pushAvailable = push;
+  s.admin = online && adminOn;
+  if (s.tab === "admin" && !s.admin) s.tab = "hoje";
   render();
+  if (s.tab === "admin") void loadAdmin();
   if (!online) return;
   try {
     const remote = await api.getProgress();
     const merged = mergeData(load(user), remote.data);
+    const { tab, adminPanel } = s;
     s = createState(user, new Date(), merged, serverAi, pix);
+    s.tab = tab;
+    s.adminPanel = adminPanel;
     s.canInstall = installEvent !== null;
     s.pushAvailable = push;
     s.musicSearch = musicSearchOn;
+    s.admin = adminOn;
     void checkPushOn();
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
@@ -171,6 +182,7 @@ async function boot(): Promise<void> {
   try {
     const me = await api.me();
     musicSearchOn = !!me.musicSearch;
+    adminOn = !!me.admin;
     await start(me.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     const cached = lastUser();
@@ -206,6 +218,7 @@ function render(): void {
     : s.tab === "treino" ? renderPractice(s)
     : s.tab === "evolucao" ? renderEvolution(s)
     : s.tab === "musica" ? renderMusic(s)
+    : s.tab === "admin" && s.admin ? renderAdmin(s)
     : renderSituations(s);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
@@ -445,6 +458,8 @@ function toast(msg: string, ok = false): void {
 
 function setTab(tab: Tab): void {
   if (s.tab === "musica" && tab !== "musica") destroyPlayer();
+  // A senha temporária aparece uma vez só: saiu do painel, some.
+  if (s.tab === "admin" && tab !== "admin" && s.adminPanel) s.adminPanel = { ...s.adminPanel, temp: null, confirm: null };
   cancelListening();
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
@@ -452,9 +467,42 @@ function setTab(tab: Tab): void {
   history.replaceState(null, "", tab === "hoje" ? location.pathname : `#${tab}`);
   const revealed = tab === "dialogo" ? ensureDialogue(s) : [];
   if (tab === "ia") void refreshAiSession();
+  if (tab === "admin") void loadAdmin();
   render();
   window.scrollTo(0, 0);
   playLines(revealed);
+}
+
+/* ---------- painel do dono ---------- */
+async function loadAdmin(): Promise<void> {
+  if (!s.admin) return;
+  const prev = s.adminPanel;
+  s.adminPanel = { loading: true, error: null, stats: prev?.stats ?? null, users: prev?.users ?? [], confirm: null, busy: false, temp: prev?.temp ?? null };
+  render();
+  try {
+    const [stats, list] = await Promise.all([api.adminStats(), api.adminUsers()]);
+    s.adminPanel = { ...s.adminPanel, loading: false, stats, users: list.users };
+  } catch (e) {
+    s.adminPanel = { ...s.adminPanel, loading: false, error: e instanceof ApiError ? e.message : "Não deu pra carregar o painel." };
+  }
+  if (s.tab === "admin") render();
+}
+
+async function resetUserPassword(username: string): Promise<void> {
+  const p = s.adminPanel;
+  if (!p || p.busy) return;
+  p.busy = true;
+  p.error = null;
+  render();
+  try {
+    const r = await api.adminReset(username);
+    p.temp = { username: r.username, password: r.password };
+    p.confirm = null;
+  } catch (e) {
+    p.error = e instanceof ApiError ? e.message : "Não deu pra gerar a senha.";
+  }
+  p.busy = false;
+  if (s.tab === "admin") render();
 }
 
 /* ---------- diálogo guiado ---------- */
@@ -744,6 +792,28 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "goto-musica": () => setTab("musica"),
   "goto-hoje": () => setTab("hoje"),
   "goto-ia": () => setTab("ia"),
+  "goto-situacoes": () => setTab("situacoes"),
+  "goto-admin": () => setTab("admin"),
+  "admin-reload": () => void loadAdmin(),
+  "admin-reset": (el) => {
+    if (!s.adminPanel) return;
+    s.adminPanel.confirm = el.dataset.user ?? null;
+    s.adminPanel.error = null;
+    render();
+  },
+  "admin-reset-cancel": () => {
+    if (s.adminPanel) s.adminPanel.confirm = null;
+    render();
+  },
+  "admin-reset-go": (el) => void resetUserPassword(el.dataset.user!),
+  "admin-copy": () => {
+    const t = s.adminPanel?.temp;
+    if (t) void copy(t.password, "Senha copiada", "admin-temp");
+  },
+  "admin-temp-close": () => {
+    if (s.adminPanel) s.adminPanel.temp = null;
+    render();
+  },
 
   "dl-play": (el) => play(packs[s.dialogue!.packIndex]!.chat[Number(el.dataset.line)]!.en),
   "dl-hint": () => { s.dialogue!.hint = true; render(); },
