@@ -1,7 +1,8 @@
 /**
  * Notificações (Web Push) sem biblioteca: só Web Crypto, funciona no Bun e no Worker.
- * As notificações vão sem conteúdo (o service worker mostra um texto fixo), então não
- * precisa criptografar a mensagem — só assinar o pedido com a chave VAPID do app.
+ * As notificações vão sem conteúdo, então não precisa criptografar a mensagem — só assinar
+ * o pedido com a chave VAPID do app. O texto fica no banco (push_outbox) e o service worker
+ * busca em /api/push/latest quando o "toque" chega.
  */
 import type { Db } from "./db";
 
@@ -52,6 +53,54 @@ export async function generateVapid(): Promise<{ publicKey: string; privateJwk: 
   };
 }
 
+/** Texto de uma notificação, guardado pro service worker buscar. */
+export interface PushMessage {
+  title: string;
+  body: string;
+  url: string;
+}
+
+/** Textos dos avisos agendados (push_jobs), por tipo. */
+export const JOB_MESSAGES: Record<string, PushMessage> = {
+  "ai-ready": { title: "Papo Reto", body: "Sua conversa com a IA liberou! Bora praticar mais 7 minutos?", url: "./#ia" },
+};
+
+/** Guarda o texto (só o último de cada tipo por usuário). */
+export async function writeOutbox(db: Db, userId: number, kind: string, msg: PushMessage, now = Date.now()): Promise<void> {
+  await db.run(
+    "INSERT INTO push_outbox (user_id, kind, title, body, url, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, kind) DO UPDATE SET title = excluded.title, body = excluded.body, url = excluded.url, created_at = excluded.created_at",
+    userId,
+    kind,
+    msg.title,
+    msg.body,
+    msg.url,
+    now,
+  );
+}
+
+/** A notificação mais recente do usuário (o que o service worker mostra). */
+export async function latestOutbox(db: Db, userId: number): Promise<(PushMessage & { kind: string }) | null> {
+  return db.first<PushMessage & { kind: string }>(
+    "SELECT kind, title, body, url FROM push_outbox WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+    userId,
+  );
+}
+
+/** Toca todos os aparelhos do usuário; apaga as inscrições que não valem mais. Devolve quantos receberam. */
+export async function pushUser(db: Db, v: Vapid, userId: number): Promise<number> {
+  const subs = await db.all<{ endpoint: string }>("SELECT endpoint FROM push_subs WHERE user_id = ?", userId);
+  let sent = 0;
+  for (const { endpoint } of subs) {
+    try {
+      if (await sendPush(endpoint, v)) sent++;
+      else await db.run("DELETE FROM push_subs WHERE endpoint = ?", endpoint);
+    } catch {
+      // aparelho fora do ar: tenta na próxima vez que houver aviso
+    }
+  }
+  return sent;
+}
+
 export async function schedulePush(db: Db, userId: number, kind: string, dueAt: number): Promise<void> {
   await db.run(
     "INSERT INTO push_jobs (user_id, kind, due_at) VALUES (?, ?, ?) ON CONFLICT(user_id, kind) DO UPDATE SET due_at = excluded.due_at",
@@ -67,15 +116,9 @@ export async function sendDuePushes(db: Db, v: Vapid, now = Date.now()): Promise
   let sent = 0;
   for (const job of jobs) {
     await db.run("DELETE FROM push_jobs WHERE user_id = ? AND kind = ?", job.user_id, job.kind);
-    const subs = await db.all<{ endpoint: string }>("SELECT endpoint FROM push_subs WHERE user_id = ?", job.user_id);
-    for (const { endpoint } of subs) {
-      try {
-        if (await sendPush(endpoint, v)) sent++;
-        else await db.run("DELETE FROM push_subs WHERE endpoint = ?", endpoint);
-      } catch {
-        // aparelho fora do ar: tenta na próxima vez que houver aviso
-      }
-    }
+    const msg = JOB_MESSAGES[job.kind];
+    if (msg) await writeOutbox(db, job.user_id, job.kind, msg, now);
+    sent += await pushUser(db, v, job.user_id);
   }
   return sent;
 }

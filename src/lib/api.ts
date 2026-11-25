@@ -6,6 +6,13 @@ import type { PixConfig } from "./pix";
 export type AdminStats = Awaited<ReturnType<typeof import("../../server/admin").adminStats>>;
 export type AdminUser = Awaited<ReturnType<typeof import("../../server/admin").adminUsers>>[number];
 
+/** Lembrete diário por notificação ("HH:MM" no fuso IANA do aparelho). */
+export interface Reminder {
+  time: string;
+  tz: string;
+  enabled: boolean;
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -34,6 +41,8 @@ export const api = {
   aiSession: () => call<import("../../server/session").SessionState>("GET", "ai/session"),
   pushKey: () => call<{ publicKey: string }>("GET", "push/key"),
   pushSubscribe: (sub: PushSubscriptionJSON) => call<{ ok: true }>("POST", "push/subscribe", sub),
+  getReminder: () => call<Reminder | null>("GET", "reminder"),
+  putReminder: (r: Reminder) => call<Reminder>("PUT", "reminder", r),
   login: (username: string, password: string) => call<{ username: string }>("POST", "auth/login", { username, password }),
   signup: (username: string, password: string, code: string) =>
     call<{ username: string }>("POST", "auth/signup", { username, password, code }),

@@ -2,21 +2,24 @@ import { allPhrases, packs, phraseId } from "./data";
 import { dateKey, type DateKey } from "./lib/dates";
 import { packIndexFor, shuffle, streak } from "./lib/schedule";
 import { dueIds, grade, isKnown, markKnown } from "./lib/srs";
+import { EAR_DECK, earDue } from "./lib/ear";
 import { emptyDay, load, loadAiKey, save, type AiKey, type DayStats, type SavedData } from "./lib/storage";
 import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
+import type { Reminder } from "./lib/api";
 import type { SessionState } from "../server/session";
 import type { Blank, Level, LyricLine } from "./lib/lyrics";
 import type { AdminStats, AdminUser } from "./lib/api";
 
 export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "admin";
 export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "admin"];
-export type PracticeMode = "falar" | "ouvir";
+export type PracticeMode = "falar" | "ouvir" | "musica";
 
 export interface Practice {
   mode: PracticeMode;
   /** Pacote que gerou o baralho; se a pessoa trocar de pacote, o baralho é refeito. */
   packIndex: number;
+  /** IDs de frase; no modo "musica", chaves de `data.earWords`. */
   deck: string[];
   pos: number;
   revealed: boolean;
@@ -136,6 +139,8 @@ export interface AppState {
   aiSession: SessionState | null;
   pushAvailable: boolean;
   pushOn: boolean;
+  /** Lembrete diário por notificação, como está no servidor (null = nunca ativou). */
+  reminder: Reminder | null;
   /** PIX do projeto (null = apoio escondido), janela aberta, valor escolhido e lembrete atual. */
   pix: PixConfig | null;
   support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
@@ -184,6 +189,7 @@ export function createState(
     aiSession: null,
     pushAvailable: false,
     pushOn: false,
+    reminder: null,
     music: emptyMusic(),
     musicSearch: false,
     admin: false,
@@ -233,6 +239,9 @@ const packIds = (packIndex: number): string[] => {
 export const reviewsDue = (s: AppState): string[] =>
   dueIds(s.data.progress, s.today, new Set(packIds(s.packIndex)));
 
+/** Palavras das músicas vencidas pra revisar (mais atrasadas primeiro). */
+export const earReviewsDue = (s: AppState): string[] => earDue(s.data.earWords, s.today);
+
 export function toggleKnown(s: AppState, id: string): boolean {
   const p = s.data.progress;
   if (isKnown(p[id])) {
@@ -252,7 +261,10 @@ export function goToPack(s: AppState, index: number): void {
 }
 
 export function startPractice(s: AppState, mode: PracticeMode = s.practice?.mode ?? "falar"): Practice {
-  const deck = shuffle([...packIds(s.packIndex), ...reviewsDue(s).slice(0, REVIEW_LIMIT)]);
+  const deck =
+    mode === "musica"
+      ? earReviewsDue(s).slice(0, EAR_DECK)
+      : shuffle([...packIds(s.packIndex), ...reviewsDue(s).slice(0, REVIEW_LIMIT)]);
   s.practice = { mode, packIndex: s.packIndex, deck, pos: 0, revealed: false, score: 0 };
   return s.practice;
 }
@@ -265,9 +277,15 @@ export function answer(s: AppState, hit: boolean): void {
   const pr = s.practice;
   const id = pr?.deck[pr.pos];
   if (!pr || !id) return;
-  const firstTime = hit && !s.data.progress[id]?.at;
-  s.data.progress[id] = grade(s.data.progress[id], hit, s.today);
-  track(s, { reviews: 1, hits: hit ? 1 : 0, learned: firstTime ? 1 : 0 });
+  if (pr.mode === "musica") {
+    const ear = s.data.earWords[id];
+    if (ear) ear.card = grade(ear.card, hit, s.today);
+    track(s, { reviews: 1, hits: hit ? 1 : 0 });
+  } else {
+    const firstTime = hit && !s.data.progress[id]?.at;
+    s.data.progress[id] = grade(s.data.progress[id], hit, s.today);
+    track(s, { reviews: 1, hits: hit ? 1 : 0, learned: firstTime ? 1 : 0 });
+  }
   if (hit) pr.score++;
   pr.pos++;
   pr.revealed = false;

@@ -28,7 +28,7 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Diálogo** — a cena do pacote, turno a turno: a outra pessoa fala (com áudio), você responde **em voz alta**. O reconhecimento de voz do navegador transcreve, o app compara com a fala certa (tolerante a contrações e pontuação) e marca o que faltou. Sem reconhecimento de voz, uma caixa de texto aceita o ditado do teclado. A melhor nota de cada cena fica salva.
 - **IA** — papo livre (ou no papel da situação) com correção embaixo de cada fala; sessões de 7 min com 1 h de espera e notificação quando libera. Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
 - **Música** — treino de ouvido: busca (ou cola o link de) um vídeo do YouTube, a letra sincronizada vem do LRCLIB e algumas palavras somem. No fim da linha a música pausa e você escolhe entre 4 opções parecidas; dá pra ouvir a palavra, repetir o trecho e ajustar a sincronia. Três níveis.
-- **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
+- **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio. *Músicas*: as palavras que você errou na aba Música, com o trecho da letra e a palavra na voz do aparelho (acertar a palavra numa música depois também conta).
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
 - **Sua evolução** (toque nos números do topo) — nível pelas frases dominadas, resumo da semana vs. a anterior, mapa de constância de 16 semanas, força da memória (caixas da repetição espaçada), gráficos de frases dominadas e da nota da fala nos diálogos, conquistas e a coleção das últimas expressões. Um histórico diário é salvo e sincronizado com a conta.
@@ -81,6 +81,7 @@ bun run build && bunx wrangler deploy
 - Modelos do Gemini: tenta `gemini-3.8-flash` e cai pro `gemini-3.5-flash-lite` se estiver sobrecarregado.
 - **Chave própria** (Gemini `AIza…`, OpenAI `sk-…` ou Anthropic `sk-ant-…`) colada na aba IA: sem limite de sessão, cobrada na conta da pessoa. Fica só no aparelho e vai por HTTPS a cada mensagem; o servidor não guarda.
 - Notificações: o cron do Worker (a cada minuto) envia os avisos agendados. No iPhone, só com o app instalado na Tela de Início (iOS 16.4+).
+- **Lembrete diário** (aba Hoje): a pessoa escolhe o horário e o app manda "Seu pacote do dia chegou!" (com quantas revisões estão esperando) no fuso do aparelho, uma vez por dia (`server/reminders.ts`). O push vai sem conteúdo; o service worker busca o texto em `/api/push/latest`. Sem notificação (iPhone sem instalar, navegador sem push), fica o lembrete no calendário (.ics). Tabelas em `migrations/0004_reminders.sql`. No Mac, `bun dev`/`bun preview` imitam o cron (`scripts/cron.ts`) quando há chaves VAPID no `.env`.
 
 Configuração (`.env` local ou `bunx wrangler secret put …`): `GEMINI_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gerar com `generateVapid()` de `server/push.ts`).
 

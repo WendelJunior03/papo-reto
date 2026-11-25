@@ -1,4 +1,5 @@
 import type { Progress } from "./srs";
+import type { EarWords } from "./ear";
 import type { DateKey } from "./dates";
 
 /** Tudo que o app guarda por usuário (no aparelho e, com login, também no servidor). */
@@ -21,6 +22,8 @@ export interface SavedData {
   history: Record<DateKey, DayStats>;
   /** Resultado por música (aba Música): a melhor e cada tentativa, pra mostrar a evolução. */
   songs: Record<string, SongRecord>;
+  /** Palavras erradas nas músicas, viram revisão no Treinar (chave = palavra normalizada). */
+  earWords: EarWords;
 }
 
 export interface SongAttempt {
@@ -65,7 +68,7 @@ const MAX_VISITS = 400;
 
 export const emptyData = (): SavedData => ({
   start: null, visits: [], progress: {}, installHintDismissed: false,
-  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {}, songs: {},
+  reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {}, songs: {}, earWords: {},
 });
 
 /** Cada usuário tem a sua cópia no aparelho, então duas pessoas no mesmo celular não se misturam. */

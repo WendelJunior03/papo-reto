@@ -5,6 +5,7 @@
  */
 import { handleApi, type ApiConfig } from "../server/api";
 import { sendDuePushes } from "../server/push";
+import { sendDueReminders } from "../server/reminders";
 import { d1Db, type D1Database } from "../server/db";
 import { parseAdmins } from "../server/admin";
 
@@ -75,9 +76,11 @@ export default {
     return res ?? env.ASSETS.fetch(req);
   },
 
-  /** Cron (a cada minuto): manda as notificações agendadas, como "sua conversa liberou". */
+  /** Cron (a cada minuto): manda as notificações agendadas ("sua conversa liberou") e os lembretes diários. */
   async scheduled(_event: unknown, env: Env): Promise<void> {
     const cfg = config(env);
-    if (cfg.vapid) await sendDuePushes(cfg.db, cfg.vapid);
+    if (!cfg.vapid) return;
+    await sendDuePushes(cfg.db, cfg.vapid);
+    await sendDueReminders(cfg.db, cfg.vapid);
   },
 };

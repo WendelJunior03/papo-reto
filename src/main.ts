@@ -8,6 +8,7 @@ import { plain } from "./lib/html";
 import { packs } from "./data";
 import { audioFile } from "./lib/spoken";
 import { buildReminderICS, downloadReminder } from "./lib/reminder";
+import { canPush, isIOS, isStandalone } from "./lib/device";
 import { ui } from "./icons";
 import {
   answer, createState, currentPack, ensurePractice, goToPack, knownCount, knownInPack, persist,
@@ -28,6 +29,7 @@ import { renderAi } from "./views/ai";
 import { renderEvolution } from "./views/evolution";
 import { endHtml, errorHtml, lyricsHtml, optionsHtml, renderMusic, scoreHtml, syncHtml } from "./views/music";
 import { cleanTitle, lineAt, makeBlanks, parseLrc } from "./lib/lyrics";
+import { earAnswer } from "./lib/ear";
 import { loadYouTube, YT_ERRORS, type YTPlayer } from "./lib/youtube";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
@@ -166,7 +168,7 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     s.pushAvailable = push;
     s.musicSearch = musicSearchOn;
     s.admin = adminOn;
-    void checkPushOn();
+    void checkPushOn().then(loadReminder);
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
     // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou).
@@ -631,31 +633,83 @@ async function swRegistration(): Promise<ServiceWorkerRegistration | null> {
 }
 
 async function checkPushOn(): Promise<void> {
-  if (!s?.pushAvailable || !("PushManager" in window)) return;
+  if (!s?.pushAvailable || !canPush()) return;
   const reg = await swRegistration();
   s.pushOn = !!(await reg?.pushManager.getSubscription());
 }
 
-async function enablePush(): Promise<void> {
-  const standalone =
-    matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  if (!("PushManager" in window) || !("Notification" in window)) {
-    return toast(/iPhone|iPad/.test(navigator.userAgent) && !standalone
+/** Pede permissão e inscreve este aparelho nas notificações. Devolve false (com aviso) se não deu. */
+async function subscribePush(): Promise<boolean> {
+  if (!canPush()) {
+    toast(isIOS() && !isStandalone()
       ? "No iPhone, instale o app na Tela de Início pra receber avisos"
       : "Este navegador não recebe notificações");
+    return false;
   }
-  if ((await Notification.requestPermission()) !== "granted") return toast("Sem permissão pra notificar. Dá pra liberar nos ajustes do navegador.");
+  if ((await Notification.requestPermission()) !== "granted") {
+    toast("Sem permissão pra notificar. Dá pra liberar nos ajustes do navegador.");
+    return false;
+  }
   try {
     const reg = await swRegistration();
-    if (!reg) return toast("Abra o app instalado pra ativar os avisos");
+    if (!reg) {
+      toast("Abra o app instalado pra ativar os avisos");
+      return false;
+    }
     const { publicKey } = await api.pushKey();
     const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) }));
     await api.pushSubscribe(sub.toJSON());
     s.pushOn = true;
-    render();
-    toast("Pronto! Te avisamos quando liberar.", true);
+    return true;
   } catch {
     toast("Não deu pra ativar os avisos agora. Tenta de novo.");
+    return false;
+  }
+}
+
+async function enablePush(): Promise<void> {
+  if (!(await subscribePush())) return;
+  render();
+  toast("Pronto! Te avisamos quando liberar.", true);
+}
+
+/* ---------- lembrete diário ---------- */
+async function loadReminder(): Promise<void> {
+  if (!s?.pushAvailable || !canPush()) return;
+  try {
+    s.reminder = await api.getReminder();
+    if (s.reminder?.enabled) s.data.reminderTime = s.reminder.time;
+    if (s.tab === "hoje") render();
+  } catch {
+    // sem conexão: o cartão mostra o botão de ativar
+  }
+}
+
+/** Ativa (ou muda o horário do) lembrete: inscreve o aparelho e salva no servidor com o fuso daqui. */
+async function enableReminder(): Promise<void> {
+  const input = document.getElementById("reminder-time") as HTMLInputElement | null;
+  const time = input?.value || s.data.reminderTime;
+  if (!(await subscribePush())) return;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo";
+    s.reminder = await api.putReminder({ time, tz, enabled: true });
+    s.data.reminderTime = time;
+    persist(s);
+    render();
+    toast(`Lembrete às ${time} ativado`, true);
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : "Não deu pra salvar o lembrete agora.");
+  }
+}
+
+async function disableReminder(): Promise<void> {
+  if (!s.reminder) return;
+  try {
+    s.reminder = await api.putReminder({ ...s.reminder, enabled: false });
+    render();
+    toast("Lembrete desativado");
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : "Não deu pra desativar agora.");
   }
 }
 
@@ -783,7 +837,16 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   today: () => { goToPack(s, s.todayIndex); render(); },
   chatpt: () => { s.showChatPt = !s.showChatPt; render(); },
   saychat: () => playSequence(currentPack(s).chat.map((c) => c.en)),
-  "goto-treino": () => setTab("treino"),
+  "goto-treino": () => {
+    // O aviso de revisões é de frases: abre no modo Falar, mesmo que o último usado tenha sido Músicas.
+    if (s.practice?.mode === "musica") startPractice(s, "falar");
+    setTab("treino");
+  },
+  "goto-treino-musica": () => {
+    startPractice(s, "musica");
+    setTab("treino");
+    playCurrent();
+  },
   "dismiss-ios": () => { s.data.installHintDismissed = true; persist(s); render(); },
   pick: (el) => { goToPack(s, Number(el.dataset.pack)); setTab("hoje"); },
   logout: () => void logout(),
@@ -866,6 +929,11 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     const ok = el.dataset.word === b.answer;
     m.answers[b.line] = { chosen: el.dataset.word!, ok };
     m.pending = null;
+    // Errou: a palavra vira revisão no Treinar; acertou depois: conta como acerto lá.
+    const line = m.lines[b.line];
+    if (line && m.video) {
+      earAnswer(s.data.earWords, { word: b.answer, line: line.text, title: cleanTitle(m.video.title) || m.video.title, videoId: m.video.id, t: line.t }, ok, s.today);
+    }
     track(s, { listen: 1, listenHits: ok ? 1 : 0 });
     persist(s);
     if (ok) {
@@ -922,6 +990,8 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     render();
   },
   "ai-notify": () => void enablePush(),
+  "reminder-on": () => void enableReminder(),
+  "reminder-off": () => void disableReminder(),
 
   "support-open": () => { s.support = { open: true, amount: 0, nudge: null, daily: false }; render(); },
   "support-done": () => { markSupported(s); render(); toast("Muito obrigado pelo apoio!", true); },
@@ -971,7 +1041,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   mode: (el) => {
     const pr = startPractice(s, el.dataset.mode as PracticeMode);
     render();
-    if (pr.mode === "ouvir") playCurrent();
+    if (pr.mode !== "falar") playCurrent();
   },
   reveal: () => {
     const pr = ensurePractice(s);
@@ -984,12 +1054,17 @@ const actions: Record<string, (el: HTMLElement) => void> = {
   "slow-card": () => playCurrent(true),
   hit: () => next(true),
   miss: () => next(false),
-  restart: () => { startPractice(s); render(); if (s.practice?.mode === "ouvir") playCurrent(); },
+  restart: () => { startPractice(s); render(); if (s.practice?.mode !== "falar") playCurrent(); },
 };
 
 function playCurrent(slow = false): void {
   const pr = s.practice;
   const id = pr?.deck[pr.pos];
+  // Palavra de música não tem áudio gravado: vai na voz do aparelho.
+  if (pr?.mode === "musica") {
+    const ear = id ? s.data.earWords[id] : undefined;
+    return void (ear && speakTts(ear.word, slow));
+  }
   const p = id ? findPhrase(id) : undefined;
   if (p) play(p.en, slow);
 }
@@ -999,7 +1074,7 @@ function next(hit: boolean): void {
   answer(s, hit);
   checkKnownMilestone(before);
   render();
-  if (s.practice?.mode === "ouvir") playCurrent();
+  if (s.practice?.mode !== "falar") playCurrent();
 }
 
 /* ---------- detalhe dos gráficos (passar o mouse ou tocar) ---------- */
