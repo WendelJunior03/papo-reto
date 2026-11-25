@@ -4,6 +4,7 @@ import { safePath } from "./static";
 import index from "../src/index.html";
 import { handleApi } from "../server/api";
 import { bunDb } from "../server/db-bun";
+import { startLocalCron } from "./cron";
 
 const pub = join(import.meta.dir, "../public");
 const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: process.env.GEMINI_API_KEY,
@@ -14,6 +15,7 @@ const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: proce
     : undefined,
   pix: process.env.PIX_KEY ? { key: process.env.PIX_KEY, name: process.env.PIX_NAME ?? "", city: process.env.PIX_CITY ?? "" } : undefined,
 };
+startLocalCron(api);
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 3000),

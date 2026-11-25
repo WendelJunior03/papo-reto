@@ -134,20 +134,44 @@ async function staleWhileRevalidate(req: Request): Promise<Response> {
   return cached ?? network;
 }
 
-/** Notificação do servidor (vem sem conteúdo: o texto é fixo). */
+/**
+ * Notificação do servidor. O push vem sem conteúdo: o texto é buscado em /api/push/latest
+ * (com o cookie da conta). Sem internet ou sem login, mostra um texto genérico.
+ */
+interface PushText {
+  kind?: string;
+  title: string;
+  body: string;
+  url: string;
+}
+
+const FALLBACK_PUSH: PushText = { kind: "papo-reto", title: "Papo Reto", body: "Bora praticar inglês? Seu pacote do dia está te esperando.", url: "./" };
+
+async function latestPush(): Promise<PushText> {
+  try {
+    const res = await fetch("./api/push/latest", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const data = res.ok ? ((await res.json()) as PushText | null) : null;
+    return data?.title && data.body ? data : FALLBACK_PUSH;
+  } catch {
+    return FALLBACK_PUSH;
+  }
+}
+
 self.addEventListener("push", (event) => {
   event.waitUntil(
-    self.registration.showNotification("Papo Reto", {
-      body: "Sua conversa com a IA liberou! Bora praticar mais 7 minutos?",
-      icon: "./icons/icon-192.png",
-      badge: "./icons/icon-192.png",
-      tag: "ai-ready",
-      data: { url: "./#ia" },
-    }),
+    latestPush().then((msg) =>
+      self.registration.showNotification(msg.title, {
+        body: msg.body,
+        icon: "./icons/icon-192.png",
+        badge: "./icons/icon-192.png",
+        tag: msg.kind ?? "papo-reto",
+        data: { url: msg.url || "./" },
+      }),
+    ),
   );
 });
 
-/** Tocar na notificação abre o app (ou traz a aba aberta pra frente) na conversa com a IA. */
+/** Tocar na notificação abre o app (ou traz a aba aberta pra frente) na tela do aviso. */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = new URL((event.notification.data as { url?: string } | null)?.url ?? "./", self.location.href).href;

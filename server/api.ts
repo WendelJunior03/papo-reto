@@ -13,6 +13,9 @@
  *   GET  /api/push/key      chave pública pra inscrever o aparelho nas notificações
  *   POST /api/push/subscribe   { endpoint, keys: { p256dh, auth } }
  *   POST /api/push/unsubscribe { endpoint }
+ *   GET  /api/push/latest   texto da última notificação (o service worker busca quando o push chega)
+ *   GET  /api/reminder      lembrete diário { time, tz, enabled } ou null
+ *   PUT  /api/reminder      { time: "HH:MM", tz: "America/Sao_Paulo", enabled }
  *   GET  /api/music/search?q=   vídeos do YouTube (precisa da chave do YouTube no servidor)
  *   GET  /api/music/video?url=  dados de um link do YouTube colado (sem chave)
  *   GET  /api/music/lyrics?q=&duration=  ou  ?id=   letra sincronizada (LRCLIB)
@@ -24,7 +27,8 @@ import {
 } from "./auth";
 import { handleChat, providerFor, type ChatAuth } from "./chat";
 import type { Db } from "./db";
-import { schedulePush, type Vapid } from "./push";
+import { latestOutbox, schedulePush, type Vapid } from "./push";
+import { HHMM, validTimeZone } from "./reminders";
 import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInfo } from "./music";
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 
@@ -55,6 +59,12 @@ const serverAuthOf = (cfg: ApiConfig): ChatAuth | null =>
 const PushSub = z.object({
   endpoint: z.string().url().max(1000).refine((u) => u.startsWith("https://"), "Endpoint inválido."),
   keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }),
+});
+
+const ReminderBody = z.object({
+  time: z.string().regex(HHMM, "Horário inválido. Use HH:MM."),
+  tz: z.string().min(1).max(64).refine(validTimeZone, "Fuso horário inválido."),
+  enabled: z.boolean(),
 });
 
 const MAX_BODY_BYTES = 400_000;
@@ -305,6 +315,33 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
       if (b instanceof Response) return b;
       await db.run("DELETE FROM push_subs WHERE endpoint = ? AND user_id = ?", b.endpoint, user.id);
       return json({ ok: true });
+    }
+
+    case "GET /api/push/latest":
+      return json(await latestOutbox(db, user.id));
+
+    case "GET /api/reminder": {
+      if (!cfg.vapid) return json({ error: "Notificações não configuradas." }, 404);
+      const row = await db.first<{ time: string; tz: string; enabled: number }>(
+        "SELECT time, tz, enabled FROM reminders WHERE user_id = ?",
+        user.id,
+      );
+      return json(row ? { time: row.time, tz: row.tz, enabled: !!row.enabled } : null);
+    }
+
+    case "PUT /api/reminder": {
+      if (!cfg.vapid) return json({ error: "Notificações não configuradas." }, 404);
+      const b = await body(req, ReminderBody);
+      if (b instanceof Response) return b;
+      // Mudou o horário ou o fuso: zera last_sent pra o lembrete poder sair ainda hoje no novo horário.
+      await db.run(
+        "INSERT INTO reminders (user_id, time, tz, enabled) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET last_sent = CASE WHEN reminders.time = excluded.time AND reminders.tz = excluded.tz THEN reminders.last_sent ELSE NULL END, time = excluded.time, tz = excluded.tz, enabled = excluded.enabled",
+        user.id,
+        b.time,
+        b.tz,
+        b.enabled ? 1 : 0,
+      );
+      return json({ time: b.time, tz: b.tz, enabled: b.enabled });
     }
   }
 
