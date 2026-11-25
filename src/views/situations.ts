@@ -3,6 +3,7 @@ import { esc, plain } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import { packIcon, ui } from "../icons";
 import { knownInPack, type AppState } from "../state";
+import { shortcut } from "./shortcut";
 import { supportCard } from "./support";
 
 export function renderSituations(s: AppState): string {
@@ -26,8 +27,8 @@ export function renderSituations(s: AppState): string {
     <div class="sec-head"><span class="eyebrow">${packs.length} situações · ${total} frases</span>
       <h2>Escolha o momento <span class="mark">do seu dia.</span></h2>
       <p>Cada situação tem cinco frases e uma cena real. O app abre um pacote novo por dia, mas você pode pular pra qualquer um.</p></div>
-    <button class="review evo-link" data-act="goto-evolucao"><span class="st ok">Sua evolução</span><span class="txt">Nível, constância, força da memória e conquistas.</span>${ui.arrow}</button>
-    <button class="review" data-act="listen-open" data-source="revisao"><span class="st tr">Ouvir no carro</span><span class="txt">Revisão em áudio das frases que você já sabe, sem olhar pra tela.</span>${ui.arrow}</button>
+    ${shortcut({ icon: ui.chart, tone: "ok", title: "Sua evolução", sub: "Nível, constância, memória e conquistas.", attrs: `data-act="goto-evolucao"`, cls: "evo-link" })}
+    ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Revisão em áudio do que você já sabe.", attrs: `data-act="listen-open" data-source="revisao"` })}
     <div class="grid">${tiles}</div>
     ${supportCard(s)}
     <div class="account">

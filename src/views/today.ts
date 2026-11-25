@@ -3,6 +3,7 @@ import { esc, highlight, pad } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import { ui } from "../icons";
 import { canPush, isIOS, isStandalone } from "../lib/device";
+import { shortcut } from "./shortcut";
 import { currentPack, earReviewsDue, knownInPack, reviewsDue, type AppState } from "../state";
 
 export const TAGS: Record<Tag, [label: string, cls: string]> = {
@@ -176,10 +177,7 @@ export function renderToday(s: AppState): string {
 
   <section class="band"><div class="wrap">
     ${reviewBanner}
-    <button class="review listen-entry" data-act="listen-open">
-      <span class="st tr">Ouvir no carro</span>
-      <span class="txt">As frases e a cena em áudio, com tradução. Toca até com a tela bloqueada.</span>${ui.arrow}
-    </button>
+    ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Frases e cena em áudio, até com a tela bloqueada.", attrs: `data-act="listen-open"`, cls: "listen-entry" })}
     <div class="sec-head"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
     <div class="list">${cards}</div>
   </div></section>
