@@ -28,11 +28,13 @@ A instalação como app e o modo offline exigem **HTTPS** fora do `localhost`, e
 - **Diálogo** — a cena do pacote, turno a turno: a outra pessoa fala (com áudio), você responde **em voz alta**. O reconhecimento de voz do navegador transcreve, o app compara com a fala certa (tolerante a contrações e pontuação) e marca o que faltou. Sem reconhecimento de voz, uma caixa de texto aceita o ditado do teclado. A melhor nota de cada cena fica salva.
 - **IA** — papo livre (ou no papel da situação) com correção embaixo de cada fala; sessões de 7 min com 1 h de espera e notificação quando libera. Ele responde, traduz se você pedir e mostra o jeito natural de dizer o que você tentou.
 - **Música** — treino de ouvido: busca (ou cola o link de) um vídeo do YouTube, a letra sincronizada vem do LRCLIB e algumas palavras somem. No fim da linha a música pausa e você escolhe entre 4 opções parecidas; dá pra ouvir a palavra, repetir o trecho e ajustar a sincronia. Três níveis.
+- **Ouvir no carro** (botão no Hoje e em Situações) — modo podcast, sem olhar pra tela: cada frase em inglês, a tradução, o inglês de novo pra repetir junto e, no fim, a cena. Fonte: pacote de hoje, pacote aberto ou revisão (as 15 frases dominadas mais recentes); "Inglês + português" ou "Só inglês"; velocidade normal ou mais devagar. Toca com a tela bloqueada: tudo é arquivo de áudio encadeado num único `<audio>` (até as pausas, que são arquivos de silêncio), com Media Session pros botões da tela de bloqueio, do fone e do carro.
+- **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio.
 - **Treinar** — flashcards de virar. *Falar*: vê o português e fala em inglês. *Ouvir*: só o áudio. *Músicas*: as palavras que você errou na aba Música, com o trecho da letra e a palavra na voz do aparelho (acertar a palavra numa música depois também conta).
 - **Repetição espaçada** (Leitner) — cada acerto empurra a próxima revisão (1, 3, 7, 16, 35 dias); erro volta pro começo. Revisões vencidas entram no treino junto com o pacote do dia.
 - **Situações** — todos os pacotes com o progresso de cada um.
 - **Sua evolução** (toque nos números do topo) — nível pelas frases dominadas, resumo da semana vs. a anterior, mapa de constância de 16 semanas, força da memória (caixas da repetição espaçada), gráficos de frases dominadas e da nota da fala nos diálogos, conquistas e a coleção das últimas expressões. Um histórico diário é salvo e sincronizado com a conta.
-- Progresso salvo no aparelho (`localStorage`). Áudio gravado (public/audio, gerado com as vozes do macOS), guardado offline conforme cada pacote é aberto; a voz do celular fica de reserva.
+- Progresso salvo no aparelho (`localStorage`). Áudio gravado (public/audio em inglês e public/audio-pt com as traduções, gerados com as vozes do macOS), guardado offline conforme cada pacote é aberto; a voz do celular fica de reserva.
 
 ## Apoio por PIX
 

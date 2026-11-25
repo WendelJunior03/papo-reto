@@ -41,7 +41,8 @@ self.addEventListener("fetch", (event) => {
   // Login, progresso e IA sempre vão direto ao servidor.
   if (url.pathname.includes("/api/")) return;
 
-  if (url.pathname.includes("/audio/")) {
+  // Inglês (/audio/) e tradução do modo "Ouvir no carro" (/audio-pt/): guardados sob demanda.
+  if (/\/audio(-pt)?\//.test(url.pathname)) {
     event.respondWith(audio(req));
     return;
   }

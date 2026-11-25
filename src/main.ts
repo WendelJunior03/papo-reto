@@ -15,7 +15,7 @@ import {
   startPractice, streakDays, toggleKnown, type PracticeMode, type Tab,
   advanceDialogue, dialogueTurnIndex, ensureAi, ensureDialogue, recordTurn, startDialogue,
   setPersistListener, type AppState, nudgeSupport, dialogueDone, dialogueScore, track, emptyMusic, type MusicVideo,
-  openDailySupport, markSupported, aiLocked,
+  openDailySupport, markSupported, aiLocked, openListen, listenPlaylist,
 } from "./state";
 import { api, ApiError } from "./lib/api";
 import { mergeData } from "./lib/merge";
@@ -34,6 +34,12 @@ import { loadYouTube, YT_ERRORS, type YTPlayer } from "./lib/youtube";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
 import { renderSituations } from "./views/situations";
+import { renderListen } from "./views/listen";
+import { playlistFiles, type ListenLang, type ListenSource } from "./lib/playlist";
+import {
+  carStatus, jump as carJump, loadPlaylist, onCarChange, play as carPlay, setAwake, setSlow, skip as carSkip,
+  stopCar, toggle as carToggle, wakeLockAvailable,
+} from "./lib/carplayer";
 import { renderAdmin } from "./views/admin";
 
 let s!: AppState;
@@ -204,6 +210,7 @@ function render(): void {
   stats.innerHTML = `<button class="stats-btn" data-act="goto-evolucao" aria-label="Ver sua evolução">
     <span class="st at">${days} ${days === 1 ? "dia" : "dias"}</span><span class="st ok">${knownCount(s)}</span>${ui.chart}</button>`;
   if (s.tab === "dialogo") ensureDialogue(s);
+  if (s.tab === "ouvir" && !carStatus().playlist) loadListen(false);
   // Música tocando: só atualiza as partes que mudam (redesenhar pararia o player).
   if (s.tab === "musica" && s.music.video && player && document.getElementById("yt-player")) {
     updateMusicParts();
@@ -220,6 +227,7 @@ function render(): void {
     : s.tab === "treino" ? renderPractice(s)
     : s.tab === "evolucao" ? renderEvolution(s)
     : s.tab === "musica" ? renderMusic(s)
+    : s.tab === "ouvir" ? renderListen(s, carStatus(), wakeLockAvailable)
     : s.tab === "admin" && s.admin ? renderAdmin(s)
     : renderSituations(s);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
@@ -413,20 +421,43 @@ async function musicSearch(raw: string): Promise<void> {
   render();
 }
 
+/** Pede ao service worker pra guardar estes áudios (ficam disponíveis offline). */
+function cacheAudio(files: string[]): void {
+  const sw = navigator.serviceWorker?.controller;
+  if (!sw || !files.length) return;
+  const base = new URL("./", location.href);
+  sw.postMessage({ type: "cache-audio", urls: files.map((f) => new URL(f, base).href) });
+}
+
+/* ---------- ouvir no carro ---------- */
+/** De onde a pessoa veio (o "Voltar" leva de volta pra lá). */
+let listenFrom: Tab = "hoje";
+
+/** Monta a lista com as opções atuais. Mantém a frase na tela se `keepItem` e continua tocando se estava. */
+function loadListen(keepItem: boolean): void {
+  const before = carStatus();
+  const pl = listenPlaylist(s);
+  loadPlaylist(pl, keepItem ? before.item : 0, before.playing);
+  // Guarda a lista inteira (inglês, português e pausas) pra tocar sem internet no caminho.
+  cacheAudio(playlistFiles(pl));
+}
+
+onCarChange(() => {
+  if (s?.tab === "ouvir") render();
+});
+
 /** Pede ao service worker pra guardar os áudios do pacote aberto (fica disponível offline). */
 let cachedPack = -1;
 function cachePackAudio(): void {
   if (!s) return; // ainda na tela de login
-  const sw = navigator.serviceWorker?.controller;
-  if (!sw || cachedPack === s.packIndex) return;
+  if (!navigator.serviceWorker?.controller || cachedPack === s.packIndex) return;
   cachedPack = s.packIndex;
   const pack = currentPack(s);
   const texts = [
     ...pack.phrases.flatMap((p) => [p.en, ...(p.examples ?? []).map((e) => e.en)]),
     ...pack.chat.map((c) => c.en),
   ];
-  const base = new URL("./", location.href);
-  sw.postMessage({ type: "cache-audio", urls: texts.map((t) => new URL(audioFile(t), base).href) });
+  cacheAudio(texts.map(audioFile));
 }
 
 /** Retícula de pontos da faixa noite — eco do mapa da identidade JMD. */
@@ -460,6 +491,7 @@ function toast(msg: string, ok = false): void {
 
 function setTab(tab: Tab): void {
   if (s.tab === "musica" && tab !== "musica") destroyPlayer();
+  if (s.tab === "ouvir" && tab !== "ouvir") stopCar();
   // A senha temporária aparece uma vez só: saiu do painel, some.
   if (s.tab === "admin" && tab !== "admin" && s.adminPanel) s.adminPanel = { ...s.adminPanel, temp: null, confirm: null };
   cancelListening();
@@ -877,6 +909,32 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     if (s.adminPanel) s.adminPanel.temp = null;
     render();
   },
+
+  /* ouvir no carro: o toque de abrir já dá o play (no iPhone o áudio só começa a partir de um toque) */
+  "listen-open": (el) => {
+    listenFrom = s.tab;
+    openListen(s, el.dataset.source as ListenSource | undefined);
+    setTab("ouvir");
+    carPlay();
+    render();
+  },
+  "listen-close": () => setTab(listenFrom === "ouvir" ? "hoje" : listenFrom),
+  "listen-toggle": () => { carToggle(); render(); },
+  "listen-prev": () => { carSkip(-1); render(); },
+  "listen-next": () => { carSkip(1); render(); },
+  "listen-jump": (el) => carJump(Number(el.dataset.item)),
+  "listen-source": (el) => {
+    s.listen.source = el.dataset.value as ListenSource;
+    loadListen(false);
+    render();
+  },
+  "listen-lang": (el) => {
+    s.listen.lang = el.dataset.value as ListenLang;
+    loadListen(true);
+    render();
+  },
+  "listen-speed": (el) => { s.listen.slow = el.dataset.value === "slow"; setSlow(s.listen.slow); render(); },
+  "listen-awake": (el) => { s.listen.awake = el.dataset.value === "on"; setAwake(s.listen.awake); render(); },
 
   "dl-play": (el) => play(packs[s.dialogue!.packIndex]!.chat[Number(el.dataset.line)]!.en),
   "dl-hint": () => { s.dialogue!.hint = true; render(); },

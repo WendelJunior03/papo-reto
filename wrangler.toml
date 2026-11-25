@@ -9,7 +9,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 # Rotas /api/* e o áudio (recorte em pedaços pro Safari) passam pelo Worker antes dos estáticos.
-run_worker_first = ["/api/*", "/audio/*"]
+run_worker_first = ["/api/*", "/audio/*", "/audio-pt/*"]
 
 # Cron: a cada minuto manda as notificações agendadas (ex.: "sua conversa com a IA liberou").
 [triggers]

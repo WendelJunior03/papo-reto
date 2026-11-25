@@ -53,4 +53,10 @@ export const ui = {
   lock: svg(`<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>`),
   chart: svg(`<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>`),
   share: svg(`<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>`),
+  /* player do "Ouvir no carro" */
+  car: svg(PACK.car),
+  resume: svg(`<path d="M7 4.5v15l12.5-7.5z"/>`, 'fill="currentColor"'),
+  pause: svg(`<rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/>`, 'fill="currentColor"'),
+  prevTrack: svg(`<path d="M18 5v14L8 12z"/><rect x="5" y="5" width="2.5" height="14" rx="1"/>`, 'fill="currentColor"'),
+  nextTrack: svg(`<path d="M6 5v14l10-7z"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/>`, 'fill="currentColor"'),
 };
