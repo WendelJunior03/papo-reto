@@ -207,6 +207,7 @@ export function renderToday(s: AppState): string {
     ${reviewBanner}
     ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Frases e cena em áudio, até com a tela bloqueada.", attrs: `data-act="listen-open"`, cls: "listen-entry" })}
     ${shortcut({ icon: packIcon("book"), tone: "u", title: "Historinha com suas frases", sub: "Um conto curtinho só com frases que você já sabe, com áudio e tradução.", attrs: `data-act="story-open"`, cls: "story-entry" })}
+    ${shortcut({ icon: packIcon("people"), tone: "at", title: "Salas ao vivo", sub: "Chame amigos pra falar inglês por voz.", attrs: `data-act="goto-salas"` })}
     <div class="sec-head" id="frases"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
     <div class="list">${cards}</div>
   </div></section>

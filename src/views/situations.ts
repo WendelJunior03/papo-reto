@@ -31,6 +31,7 @@ export function renderSituations(s: AppState, canShare = false): string {
       <p>Cada situação tem cinco frases e uma cena real. O app abre um pacote novo por dia, mas você pode pular pra qualquer um.</p></div>
     ${shortcut({ icon: ui.chart, tone: "ok", title: "Sua evolução", sub: "Nível, constância, memória e conquistas.", attrs: `data-act="goto-evolucao"`, cls: "evo-link" })}
     ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Revisão em áudio do que você já sabe.", attrs: `data-act="listen-open" data-source="revisao"` })}
+    ${shortcut({ icon: packIcon("people"), tone: "at", title: "Salas ao vivo", sub: "Converse por voz com amigos, só em inglês.", attrs: `data-act="goto-salas"` })}
     <div class="grid">${tiles}</div>
     ${supportCard(s)}
     ${inviteCard(s, canShare)}
