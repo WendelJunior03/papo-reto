@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { allPhrases, packs } from "../src/data";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { audioFile } from "../src/lib/spoken";
+import { audioFile, ptAudioFile, SILENCE } from "../src/lib/spoken";
 
 const chunk = (s: string): string[] => [...s.matchAll(/\[(.+?)\]/g)].map((m) => m[1]!.toLowerCase());
 
@@ -69,4 +69,14 @@ test("toda frase e fala de cena tem áudio gravado (rode `bun run audio`)", () =
   ];
   const missing = texts.filter((t) => !existsSync(join(import.meta.dir, "../public", audioFile(t))));
   expect(missing).toEqual([]);
+});
+
+test("toda tradução de frase e de fala de cena tem áudio em português (rode `bun run audio`)", () => {
+  const texts = [...allPhrases.map((p) => p.pt), ...packs.flatMap((p) => p.chat.map((c) => c.pt))];
+  const missing = texts.filter((t) => !existsSync(join(import.meta.dir, "../public", ptAudioFile(t))));
+  expect(missing).toEqual([]);
+});
+
+test("as pausas do modo Ouvir no carro existem (rode `bun run audio`)", () => {
+  for (const f of Object.values(SILENCE)) expect({ f, ok: existsSync(join(import.meta.dir, "../public", f)) }).toEqual({ f, ok: true });
 });

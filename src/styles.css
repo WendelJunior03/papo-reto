@@ -509,3 +509,28 @@ nav.tabbar button svg{width:20px;height:20px}
 .ear-link{stroke:var(--ultra);stroke-width:2;stroke-linecap:round}
 .ear-first{fill:#CFE5F8;stroke:#fff;stroke-width:2}
 .ear-last{fill:#175FAE;stroke:#fff;stroke-width:2}
+
+/* ouvir no carro */
+.listen-hero{padding-block:24px 26px;margin-top:12px}
+.listen-hero .wrap{display:grid;gap:14px}
+.listen-who{color:var(--on-ceu-soft)}
+.listen-en{font-size:clamp(28px,8vw,38px);font-weight:700;line-height:1.1;letter-spacing:-.04em;text-wrap:balance;min-height:2.2em}
+.listen-pt{color:var(--on-ceu-soft);font-size:18px;line-height:1.35}
+.listen-ctrl{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:6px}
+.listen-ctrl .btn-ic{width:54px;height:54px}
+.listen-ctrl .btn-ic svg{width:22px;height:22px}
+.listen-play{width:84px;height:84px;padding:0}
+.listen-play svg{width:34px;height:34px}
+.pbar.on-dark-bar{color:var(--on-ceu-soft);margin-top:4px}
+.pbar.on-dark-bar .steps-bar i{background:rgba(255,255,255,.3)}
+.pbar.on-dark-bar .steps-bar i.on{background:var(--am)}
+.listen-body{display:grid;gap:18px}
+.listen-opt{display:grid;gap:8px}
+.listen-opt .mono{color:var(--n600)}
+.listen-note{background:var(--surface);border:1px solid var(--n200);border-radius:var(--r);padding:16px;display:grid;gap:10px;font-size:14.5px;color:var(--n700)}
+.listen-note .eyebrow svg{width:15px;height:15px}
+.listen-note .eyebrow::before{display:none}
+.listen-list{list-style:none;margin:0 0 20px;padding:0;display:grid;gap:6px}
+.listen-list button{width:100%;text-align:left;display:grid;gap:2px;padding:10px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--n200)}
+.listen-list button .mono{color:var(--n500);font-size:10.5px}
+.listen-list button[aria-current="true"]{border-color:var(--noite);box-shadow:inset 3px 0 0 var(--am)}

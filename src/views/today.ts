@@ -115,6 +115,10 @@ export function renderToday(s: AppState): string {
 
   <section class="band"><div class="wrap">
     ${reviewBanner}
+    <button class="review listen-entry" data-act="listen-open">
+      <span class="st tr">Ouvir no carro</span>
+      <span class="txt">As frases e a cena em áudio, com tradução. Toca até com a tela bloqueada.</span>${ui.arrow}
+    </button>
     <div class="sec-head"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
     <div class="list">${cards}</div>
   </div></section>

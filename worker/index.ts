@@ -66,7 +66,7 @@ function config(env: Env): ApiConfig {
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    if (new URL(req.url).pathname.startsWith("/audio/")) return audio(req, env);
+    if (/^\/audio(-pt)?\//.test(new URL(req.url).pathname)) return audio(req, env);
     const res = await handleApi(req, config(env));
     return res ?? env.ASSETS.fetch(req);
   },

@@ -7,9 +7,11 @@ import type { MatchResult } from "./lib/match";
 import type { PixConfig } from "./lib/pix";
 import type { SessionState } from "../server/session";
 import type { Blank, Level, LyricLine } from "./lib/lyrics";
+import { buildPlaylist, type ListenLang, type ListenSource, type Playlist } from "./lib/playlist";
 
-export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao";
-export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao"];
+/** "ouvir" (modo Ouvir no carro) é uma tela cheia sem botão na barra, como "evolucao". */
+export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "ouvir";
+export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "ouvir"];
 export type PracticeMode = "falar" | "ouvir";
 
 export interface Practice {
@@ -97,6 +99,17 @@ export interface Music {
   paused: boolean;
 }
 
+/** Opções do modo "Ouvir no carro" (o player em si fica em lib/carplayer.ts). */
+export interface Listen {
+  source: ListenSource;
+  lang: ListenLang;
+  slow: boolean;
+  /** Manter a tela acesa (Wake Lock), quando o aparelho deixa. */
+  awake: boolean;
+  /** Pacote que o "pacote aberto" usa (o que estava na tela ao entrar). */
+  packIndex: number;
+}
+
 export interface AppState {
   /** Usuário logado (dono do progresso). */
   user: string;
@@ -128,6 +141,7 @@ export interface AppState {
   support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
   music: Music;
   musicSearch: boolean;
+  listen: Listen;
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -172,6 +186,7 @@ export function createState(
     musicSearch: false,
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
+    listen: { source: "hoje", lang: "enpt", slow: false, awake: false, packIndex: todayIndex },
   };
 }
 
@@ -334,6 +349,19 @@ export function ensureAi(s: AppState): AiChat {
 
 /** A IA do app (sem chave própria) está liberada pra conversar agora? */
 export const aiLocked = (s: AppState): boolean => !s.aiKey && s.aiSession?.state === "cooldown";
+
+/* ---------- ouvir no carro ---------- */
+/** Abre o modo com o pacote que está na tela (o do dia, se for ele). */
+export function openListen(s: AppState, source?: ListenSource): void {
+  s.listen.packIndex = s.packIndex;
+  s.listen.source = source ?? (s.packIndex === s.todayIndex ? "hoje" : "pacote");
+}
+
+export function listenPlaylist(s: AppState): Playlist {
+  const l = s.listen;
+  if (l.source === "revisao") return buildPlaylist({ source: "review", progress: s.data.progress }, l.lang);
+  return buildPlaylist({ source: "pack", packIndex: l.source === "hoje" ? s.todayIndex : l.packIndex }, l.lang);
+}
 
 /* ---------- apoio ao projeto ---------- */
 /** Abre a janela do PIX sozinha na primeira abertura do dia, pra quem ainda não apoiou. */
