@@ -105,7 +105,9 @@ export function renderToday(s: AppState): string {
       const f = p.flip;
       const [label, cls] = TAGS[p.tag];
       return `<article class="card ${kn ? "known" : ""}">
-        <div class="card-top"><span class="n">${pad(i + 1)} / 05</span><span class="st ${cls}">${label}</span></div>
+        <div class="card-top"><span class="n">${pad(i + 1)} / 05</span><span class="st ${cls}">${label}</span>
+          <button class="known-tog" data-act="known" data-id="${id}" aria-pressed="${kn}" aria-label="Sei essa" title="${kn ? "Já sei (toque pra desmarcar)" : "Sei essa"}"><span class="known-lb">${kn ? "Já sei" : "Sei essa"}</span><i>${ui.tick}</i></button>
+        </div>
         <p class="en" lang="en">${highlight(p.en)}</p>
         <div class="ptl"><span class="mono">PT</span><p>${esc(p.pt)}</p></div>
         ${open ? `<div class="suggest"><span class="mono">Como o nativo usa</span><div>${p.note}</div>${examples(id, p.examples)}</div>` : ""}
@@ -121,12 +123,11 @@ export function renderToday(s: AppState): string {
               </div>`
             : ""
         }
-        <div class="acts">
-          <button class="btn btn-ultra" data-act="say" data-id="${id}">${ui.play}Ouvir</button>
-          <button class="btn btn-ghost btn-ic" data-act="slow" data-id="${id}" aria-label="Ouvir devagar" title="Devagar">${ui.slow}</button>
-          <button class="btn btn-ghost" data-act="tip" data-id="${id}" aria-expanded="${open}">${ui.tip}Dica e exemplos</button>
-          ${f ? `<button class="btn btn-ghost" data-act="flip" data-id="${id}" aria-expanded="${flipOpen}">${ui.flip}${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}</button>` : ""}
-          <button class="btn ${kn ? "btn-am" : "btn-ghost"} push" data-act="known" data-id="${id}" aria-pressed="${kn}">${ui.tick}${kn ? "Já sei" : "Sei essa"}</button>
+        <div class="card-acts">
+          <button class="ic-act main" data-act="say" data-id="${id}" aria-label="Ouvir" title="Ouvir"><i>${ui.play}</i><span>Ouvir</span></button>
+          <button class="ic-act" data-act="slow" data-id="${id}" aria-label="Ouvir devagar" title="Ouvir devagar"><i>${ui.slow}</i><span>Devagar</span></button>
+          <button class="ic-act" data-act="tip" data-id="${id}" aria-expanded="${open}" aria-label="Dica e exemplos" title="Dica e exemplos"><i>${ui.tip}</i><span>Dica</span></button>
+          ${f ? `<button class="ic-act" data-act="flip" data-id="${id}" aria-expanded="${flipOpen}" aria-label="${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}" title="${f.kind === "question" ? "Virar pergunta" : "Ver resposta"}"><i>${ui.flip}</i><span>${f.kind === "question" ? "Pergunta" : "Resposta"}</span></button>` : ""}
         </div>
       </article>`;
     })
