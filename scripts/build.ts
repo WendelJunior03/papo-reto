@@ -13,7 +13,7 @@ const dist = join(root, "dist");
 await rm(dist, { recursive: true, force: true });
 
 const app = await Bun.build({
-  entrypoints: [join(root, "src/index.html")],
+  entrypoints: [join(root, "src/index.html"), join(root, "src/conheca.html")],
   outdir: dist,
   minify: true,
   sourcemap: "linked",
@@ -32,9 +32,11 @@ const PWA_HEAD = [
   '<link rel="icon" type="image/svg+xml" href="./icons/icon.svg">',
   '<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">',
 ].join("");
-const htmlPath = join(dist, "index.html");
-const html = await Bun.file(htmlPath).text();
-await Bun.write(htmlPath, html.replace("</head>", `${PWA_HEAD}</head>`));
+for (const page of ["index.html", "conheca.html"]) {
+  const htmlPath = join(dist, page);
+  const html = await Bun.file(htmlPath).text();
+  await Bun.write(htmlPath, html.replace("</head>", `${PWA_HEAD}</head>`));
+}
 
 async function listFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -46,7 +48,7 @@ async function listFiles(dir: string): Promise<string[]> {
 
 const files = (await listFiles(dist))
   .map((f) => relative(dist, f).split("\\").join("/"))
-  .filter((f) => !f.endsWith(".map") && f !== "sw.js" && f !== "_headers" && f !== "index.html" && !/^audio(-pt)?\//.test(f));
+  .filter((f) => !f.endsWith(".map") && f !== "sw.js" && f !== "_headers" && f !== "index.html" && f !== "conheca.html" && !/^audio(-pt)?\//.test(f));
 // index.html entra como "./": no Cloudflare, /index.html redireciona pra /, e página redirecionada no cache não abre.
 // Os áudios (mais de mil, em inglês e em português) não entram na instalação: são guardados
 // conforme cada pacote é aberto (ou quando a lista do "Ouvir no carro" começa).

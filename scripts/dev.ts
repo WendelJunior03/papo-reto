@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { safePath } from "./static";
 import index from "../src/index.html";
+import conheca from "../src/conheca.html";
 import { handleApi } from "../server/api";
 import { bunDb } from "../server/db-bun";
 import { parseAdmins } from "../server/admin";
@@ -26,7 +27,7 @@ startLocalCron(api);
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 3000),
   development: { hmr: true, console: true },
-  routes: { "/": index },
+  routes: { "/": index, "/conheca": conheca },
   websocket: rooms.websocket,
   async fetch(req) {
     const apiRes = await handleApi(req, api);

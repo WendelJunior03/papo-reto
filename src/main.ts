@@ -94,6 +94,15 @@ if (inviteFromUrl) {
   auth.mode = "signup";
   auth.code = inviteFromUrl;
 }
+/** Vindo da página de divulgação (?cadastro): já abre "Criar conta". */
+{
+  const url = new URL(location.href);
+  if (url.searchParams.has("cadastro")) {
+    auth.mode = "signup";
+    url.searchParams.delete("cadastro");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
+}
 
 function renderAuthScreen(): void {
   document.body.classList.add("auth");

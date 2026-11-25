@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Papo Reto English · inglês do jeito que o nativo fala</title>
+  <meta name="description" content="App gratuito pra aprender inglês pelo método natural: 5 frases por dia do jeito que os nativos falam, com tradução, áudio, IA, música e salas ao vivo com amigos.">
+  <meta name="theme-color" content="#2A84D2">
+  <meta property="og:title" content="Papo Reto English">
+  <meta property="og:description" content="Inglês do jeito que o nativo fala. 5 frases por dia, com áudio, tradução e treino. Grátis, direto no celular.">
+  <meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="./conheca.css">
+</head>
+<body>
+  <header class="lp-top"><div class="lp-wrap">
+    <a class="logo" href="./conheca"><span class="dot"></span>papo reto<small>EN</small></a>
+    <nav class="lp-nav" aria-label="Seções da página">
+      <a href="#como-funciona">Como funciona</a>
+      <a href="#instalar">Instalar</a>
+      <a href="#apoiar">Apoiar</a>
+    </nav>
+    <a class="btn btn-am btn-sm" href="./">Abrir o app</a>
+  </div></header>
+
+  <main>
+    <!-- Abertura -->
+    <section class="lp-hero on-dark"><div class="lp-wrap lp-hero-grid">
+      <div class="lp-hero-txt">
+        <span class="eyebrow">Grátis · direto no celular</span>
+        <h1>Inglês do jeito que o <span class="mark">nativo fala.</span></h1>
+        <p class="lp-lead">Nada de decorar regra. Todo dia o Papo Reto te entrega 5 frases prontas, do jeitinho que se fala nos Estados Unidos, com tradução embaixo, áudio e treino pra fixar.</p>
+        <div class="lp-cta">
+          <a class="btn btn-am btn-lg" href="#apoiar">Quero começar</a>
+          <a class="btn btn-ghost-light btn-lg" href="#instalar">Como instalar</a>
+        </div>
+        <ul class="lp-proof">
+          <li><b>300</b><span>frases + 1.000 exemplos com áudio</span></li>
+          <li><b>5 min</b><span>por dia já rende</span></li>
+          <li><b>R$ 0</b><span>pra usar</span></li>
+        </ul>
+      </div>
+
+      <!-- Celular com a demonstração de verdade -->
+      <div class="phone" aria-label="Demonstração do app">
+        <div class="phone-in">
+          <div class="ph-bar"><span class="logo sm"><span class="dot"></span>papo reto<small>EN</small></span><span class="ph-pill">🔥 4 · 12 frases</span></div>
+          <div class="ph-head">
+            <span class="eyebrow">Frases do dia · experimente</span>
+            <b>Toque pra ouvir</b>
+          </div>
+          <div id="demo" class="demo" aria-live="polite"></div>
+          <div class="ph-tabs" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+    </div></section>
+
+    <!-- Método -->
+    <section class="lp-band" id="como-funciona"><div class="lp-wrap">
+      <div class="lp-head">
+        <span class="eyebrow">O método</span>
+        <h2>Do jeito que <span class="mark">criança aprende.</span></h2>
+        <p>Você não aprendeu português estudando gramática: ouviu frases inteiras, repetiu e usou. O Papo Reto faz igual com o inglês.</p>
+      </div>
+      <ol class="steps">
+        <li><span class="n">1</span><b>Ouça a frase inteira</b><p>Frases reais, do dia a dia, com gíria quando cabe. Tradução natural embaixo, do jeito que um brasileiro falaria.</p></li>
+        <li><span class="n">2</span><b>Fale em voz alta</b><p>O app escuta sua pronúncia, confere e te ajuda a destravar. Ninguém te julga.</p></li>
+        <li><span class="n">3</span><b>Revise no tempo certo</b><p>As frases voltam em 1, 3, 7, 16 dias, bem na hora em que você ia esquecer. Assim elas ficam pra sempre.</p></li>
+      </ol>
+    </div></section>
+
+    <!-- Recursos -->
+    <section class="lp-band alt"><div class="lp-wrap">
+      <div class="lp-head">
+        <span class="eyebrow">O que tem dentro</span>
+        <h2>Um app inteiro <span class="mark">no seu bolso.</span></h2>
+      </div>
+      <div class="feats" id="feats"></div>
+    </div></section>
+
+    <!-- Instalar -->
+    <section class="lp-band" id="instalar"><div class="lp-wrap">
+      <div class="lp-head">
+        <span class="eyebrow">Instalar</span>
+        <h2>Sem loja, <span class="mark">sem pesar o celular.</span></h2>
+        <p>O Papo Reto é um app web (PWA): você instala direto pelo navegador em menos de um minuto, e ele abre em tela cheia com o ícone na sua tela de início.</p>
+      </div>
+      <div class="inst">
+        <div class="inst-tabs" role="tablist" aria-label="Seu aparelho">
+          <button role="tab" id="t-ios" aria-controls="p-ios" aria-selected="true">iPhone</button>
+          <button role="tab" id="t-and" aria-controls="p-and" aria-selected="false">Android</button>
+          <button role="tab" id="t-pc" aria-controls="p-pc" aria-selected="false">Computador</button>
+        </div>
+        <div class="inst-panel" role="tabpanel" id="p-ios" aria-labelledby="t-ios">
+          <ol>
+            <li>Abra <b>papo-reto.papo-reto.workers.dev</b> no <b>Safari</b>.</li>
+            <li>Toque no botão <b>Compartilhar</b> <span class="kbd" aria-hidden="true">⬆︎</span> na barra de baixo.</li>
+            <li>Role e toque em <b>Adicionar à Tela de Início</b>.</li>
+            <li>Confirme o nome <b>Papo Reto English</b> e toque em <b>Adicionar</b>.</li>
+          </ol>
+          <p class="inst-note">Dica: no iPhone, as notificações de lembrete só funcionam com o app instalado assim.</p>
+        </div>
+        <div class="inst-panel" role="tabpanel" id="p-and" aria-labelledby="t-and" hidden>
+          <ol>
+            <li>Abra <b>papo-reto.papo-reto.workers.dev</b> no <b>Chrome</b>.</li>
+            <li>Toque no menu <span class="kbd" aria-hidden="true">⋮</span> no canto de cima.</li>
+            <li>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</li>
+            <li>Pronto: o ícone do Papo Reto aparece junto dos seus apps.</li>
+          </ol>
+        </div>
+        <div class="inst-panel" role="tabpanel" id="p-pc" aria-labelledby="t-pc" hidden>
+          <ol>
+            <li>Abra <b>papo-reto.papo-reto.workers.dev</b> no Chrome ou no Edge.</li>
+            <li>Clique no ícone de <b>instalar</b> no fim da barra de endereço.</li>
+            <li>Confirme em <b>Instalar</b>. O app abre numa janela própria.</li>
+          </ol>
+        </div>
+        <button class="btn btn-ultra btn-lg" id="install" hidden>Instalar agora</button>
+      </div>
+    </div></section>
+
+    <!-- Apoiar -->
+    <section class="lp-band pix-band on-dark" id="apoiar"><div class="lp-wrap pix-grid">
+      <div class="pix-txt">
+        <span class="eyebrow">Apoie o projeto</span>
+        <h2>O app é grátis. <span class="mark">Seu PIX mantém ele no ar.</span></h2>
+        <p>O Papo Reto é um projeto independente, sem anúncio e sem assinatura. Se ele te ajudar, um PIX de qualquer valor paga o servidor, a IA e as frases novas. É totalmente opcional: dá pra criar a conta sem doar.</p>
+        <ul class="pix-why">
+          <li>Sem anúncios, nunca</li>
+          <li>Frases e recursos novos sempre chegando</li>
+          <li>Conversa com IA liberada pra todos</li>
+        </ul>
+      </div>
+      <div class="pix-card" id="pix">
+        <div class="pix-amounts" role="group" aria-label="Valor do PIX">
+          <button data-amount="0" aria-pressed="true">Livre</button>
+          <button data-amount="5" aria-pressed="false">R$ 5</button>
+          <button data-amount="10" aria-pressed="false">R$ 10</button>
+          <button data-amount="20" aria-pressed="false">R$ 20</button>
+        </div>
+        <div class="pix-qr" id="pix-qr"><span class="pix-wait">Carregando o QR Code…</span></div>
+        <p class="pix-to" id="pix-to"></p>
+        <button class="btn btn-ghost btn-lg pix-copy" id="pix-copy" disabled>Copiar código PIX</button>
+        <div class="pix-next">
+          <a class="btn btn-am btn-lg" href="./?cadastro=1">Já fiz o PIX · criar minha conta</a>
+          <a class="pix-skip" href="./?cadastro=1">Agora não, só quero criar a conta →</a>
+        </div>
+      </div>
+    </div></section>
+
+    <!-- Fechamento -->
+    <section class="lp-band lp-end"><div class="lp-wrap">
+      <h2>Bora destravar <span class="mark">seu inglês?</span></h2>
+      <p>5 frases hoje. Amanhã, mais 5. Em um mês você vai se pegar falando sem pensar.</p>
+      <div class="lp-cta center">
+        <a class="btn btn-am btn-lg" href="./?cadastro=1">Criar minha conta</a>
+        <a class="btn btn-ghost btn-lg" href="./">Já tenho conta</a>
+      </div>
+    </div></section>
+  </main>
+
+  <footer class="lp-foot"><div class="lp-wrap">
+    <span class="logo sm"><span class="dot"></span>papo reto<small>EN</small></span>
+    <p>Feito com carinho em Uberlândia · Papo Reto English</p>
+  </div></footer>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script type="module" src="./conheca.ts"></script>
+</body>
+</html>
