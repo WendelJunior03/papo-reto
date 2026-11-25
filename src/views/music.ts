@@ -155,11 +155,14 @@ export function endHtml(s: AppState): string {
   const m = s.music;
   if (!m.ended) return "";
   const hits = Object.values(m.answers).filter((a) => a.ok).length;
+  // Cada palavra errada virou card no Treinar (palavra repetida conta uma vez).
+  const missed = new Set(m.blanks.filter((b) => m.answers[b.line]?.ok === false).map((b) => b.answer)).size;
   return `<div class="done">
     <div class="ok-ic">${ui.tick}</div>
     <span class="eyebrow">Música concluída</span>
     <div class="score">${hits}<span>/${m.blanks.length}</span></div>
     <p>${hits === m.blanks.length ? "Ouvido afiado! Tenta o nível acima." : "Ouça de novo: na segunda vez as palavras aparecem sozinhas."}</p>
+    ${missed ? `<p>${missed === 1 ? "1 palavra foi" : `${missed} palavras foram`} pra revisão no <button class="link-btn" data-act="goto-treino-musica">Treinar → Músicas</button>.</p>` : ""}
     <div class="btnrow">
       <button class="btn btn-ghost btn-lg" data-act="music-restart">${ui.flip}De novo</button>
       <button class="btn btn-am btn-lg" data-act="music-back">Outra música</button>

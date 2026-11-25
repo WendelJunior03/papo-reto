@@ -3,7 +3,7 @@ import { esc, highlight, pad } from "../lib/html";
 import { isKnown } from "../lib/srs";
 import { ui } from "../icons";
 import { canPush, isIOS, isStandalone } from "../lib/device";
-import { currentPack, knownInPack, reviewsDue, type AppState } from "../state";
+import { currentPack, earReviewsDue, knownInPack, reviewsDue, type AppState } from "../state";
 
 export const TAGS: Record<Tag, [label: string, cls: string]> = {
   giria: ["Gíria", "at"],
@@ -94,6 +94,7 @@ export function renderToday(s: AppState): string {
   const words = pack.title.split(" ");
   const last = words.pop() ?? "";
   const due = reviewsDue(s).length;
+  const earDue = earReviewsDue(s).length;
 
   const cards = pack.phrases
     .map((p, i) => {
@@ -138,10 +139,16 @@ export function renderToday(s: AppState): string {
     )
     .join("");
 
-  const reviewBanner = due
-    ? `<button class="review" data-act="goto-treino">
-        <span class="st at">${due} ${due === 1 ? "revisão" : "revisões"}</span>
-        <span class="txt">Frases de outros dias querendo voltar. Leva 2 minutos.</span>${ui.arrow}
+  // Só palavras das músicas vencidas: o banner já abre o Treinar no modo "Músicas".
+  const ears = `${earDue} ${earDue === 1 ? "palavra" : "palavras"} das músicas`;
+  const reviewBanner = due || earDue
+    ? `<button class="review" data-act="${due ? "goto-treino" : "goto-treino-musica"}">
+        <span class="st at">${due + earDue} ${due + earDue === 1 ? "revisão" : "revisões"}</span>
+        <span class="txt">${
+          !due ? `${ears} que você errou. Leva 1 minuto.`
+          : earDue ? `Frases de outros dias e ${ears} querendo voltar.`
+          : "Frases de outros dias querendo voltar. Leva 2 minutos."
+        }</span>${ui.arrow}
       </button>`
     : "";
 
