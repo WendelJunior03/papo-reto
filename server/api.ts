@@ -2,10 +2,12 @@
  * Todas as rotas /api/*. Recebe o banco e a configuração de quem chama
  * (servidor do Bun ou Cloudflare Worker) e devolve null se a rota não for da API.
  *
- *   POST /api/auth/signup   { username, password, code }   cria conta (precisa do código de convite)
+ *   POST /api/auth/signup   { username, password, code }   cria conta (código geral ou convite pessoal de um amigo)
  *   POST /api/auth/login    { username, password }
  *   POST /api/auth/logout
  *   GET  /api/me
+ *   GET  /api/invite        convite pessoal { code, link, friends, badges, badge } (o código nasce no 1º pedido)
+ *   POST /api/badge         { badge }   coloca um selo conquistado (null tira)
  *   GET  /api/progress      progresso salvo do usuário
  *   PUT  /api/progress      { data, updatedAt }
  *   POST /api/chat          conversa com IA (só logado)
@@ -31,6 +33,8 @@ import {
 } from "./auth";
 import { adminStats, adminUsers, countAiMessage, isAdmin, resetPassword, touchSeen } from "./admin";
 import { handleChat, providerFor, type ChatAuth } from "./chat";
+import { badgeState, equipBadge, inviteInfo, inviterByCode, recordInvitedBy } from "./invites";
+import { BADGES, type BadgeId } from "../src/lib/invites";
 import type { Db } from "./db";
 import { latestOutbox, schedulePush, type Vapid } from "./push";
 import { HHMM, validTimeZone } from "./reminders";
@@ -40,7 +44,10 @@ import { countStory, DEFAULT_STORIES_PER_DAY, handleStory, storiesToday } from "
 
 export interface ApiConfig {
   db: Db;
-  /** Código de convite para criar conta. Sem ele, o cadastro fica fechado. */
+  /**
+   * Código de convite geral para criar conta. Sem ele, o cadastro fica fechado
+   * (inclusive pelos convites pessoais: é o jeito de fechar tudo de uma vez).
+   */
   signupCode?: string;
   /** Chaves do servidor (opcionais). Quem colocar a própria chave no app usa a dela. */
   geminiKey?: string;
@@ -96,6 +103,9 @@ const Signup = z.object({ username: Username, password: Password, code: z.string
 const Login = z.object({
   username: z.string().transform((s) => s.trim().replace(/\s+/g, " ")).pipe(z.string().min(1).max(40)),
   password: z.string().min(1).max(128),
+});
+const BadgeBody = z.object({
+  badge: z.enum(BADGES.map((b) => b.id) as [BadgeId, ...BadgeId[]]).nullable(),
 });
 const ProgressBody = z.object({ data: z.record(z.string(), z.unknown()), updatedAt: z.string().max(40) });
 const MAX_PROGRESS_BYTES = 300_000;
@@ -153,12 +163,17 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
       const b = await body(req, Signup);
       if (b instanceof Response) return b;
       if (!cfg.signupCode) return json({ error: "O cadastro está fechado. Peça uma conta pra quem administra o app." }, 403);
-      if (!sameText(b.code.trim(), cfg.signupCode)) return json({ error: "Código de convite incorreto." }, 403);
+      // Código geral (comparado em tempo constante) ou o convite pessoal de um amigo.
+      const code = b.code.trim();
+      const general = sameText(code, cfg.signupCode);
+      const inviter = general ? null : await inviterByCode(db, code);
+      if (!general && inviter === null) return json({ error: "Código de convite incorreto." }, 403);
       const exists = await db.first("SELECT 1 FROM users WHERE username = ?", b.username);
       if (exists) return json({ error: "Esse usuário já existe. Escolha outro." }, 409);
       const { hash, salt } = await hashPassword(b.password);
       await db.run("INSERT INTO users (username, pass_hash, pass_salt) VALUES (?, ?, ?)", b.username, hash, salt);
       const user = (await db.first<{ id: number }>("SELECT id FROM users WHERE username = ?", b.username))!;
+      if (inviter !== null) await recordInvitedBy(db, user.id, inviter);
       const s = await createSession(db, user.id);
       return json({ username: b.username }, 201, { "Set-Cookie": sessionCookie(req, s.token, s.expires) });
     }
@@ -199,8 +214,9 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
   if (!user) return json({ error: "Faça login pra continuar." }, 401);
 
   switch (route) {
-    case "GET /api/me":
+    case "GET /api/me": {
       await touchSeen(db, user.id);
+      const { badges, badge } = await badgeState(db, user.id);
       return json({
         username: user.username,
         ...(isAdmin(cfg.adminUsers, user.username) ? { admin: true } : {}),
@@ -208,7 +224,20 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         push: !!cfg.vapid,
         musicSearch: !!cfg.youtubeKey,
         pix: cfg.pix?.key ? cfg.pix : null,
+        badges,
+        badge,
       });
+    }
+
+    case "GET /api/invite":
+      return json(await inviteInfo(db, user.id, new URL(req.url).origin));
+
+    case "POST /api/badge": {
+      const b = await body(req, BadgeBody);
+      if (b instanceof Response) return b;
+      if (!(await equipBadge(db, user.id, b.badge))) return json({ error: "Você ainda não ganhou esse selo." }, 403);
+      return json({ badge: b.badge });
+    }
 
     case "GET /api/progress": {
       const row = await db.first<{ progress: string | null; progress_at: string | null }>(

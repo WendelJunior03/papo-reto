@@ -79,6 +79,8 @@ interface Row {
   last_seen_at: number | null;
   push: number;
   ai7: number;
+  invites: number;
+  invited_by: string | null;
 }
 
 async function loadUsers(db: Db, now: number): Promise<(Row & Saved & { lastStudy: string | null })[]> {
@@ -86,7 +88,9 @@ async function loadUsers(db: Db, now: number): Promise<(Row & Saved & { lastStud
   const rows = await db.all<Row>(
     `SELECT u.id, u.username, u.created_at, u.progress, a.last_seen_at,
        (SELECT COUNT(*) FROM push_subs p WHERE p.user_id = u.id) AS push,
-       (SELECT COALESCE(SUM(count), 0) FROM ai_usage g WHERE g.user_id = u.id AND g.day >= ?) AS ai7
+       (SELECT COALESCE(SUM(count), 0) FROM ai_usage g WHERE g.user_id = u.id AND g.day >= ?) AS ai7,
+       (SELECT COUNT(*) FROM invites i WHERE i.invited_by = u.id) AS invites,
+       (SELECT p.username FROM invites i JOIN users p ON p.id = i.invited_by WHERE i.user_id = u.id) AS invited_by
      FROM users u LEFT JOIN user_activity a ON a.user_id = u.id`,
     since7,
   );
@@ -162,6 +166,10 @@ export async function adminUsers(db: Db, now = Date.now()) {
       supporter: u.supported,
       push: u.push > 0,
       ai7d: u.ai7,
+      /** Amigos que entraram com o convite pessoal dele. */
+      invites: u.invites,
+      /** Quem convidou (null = entrou com o código geral). */
+      invitedBy: u.invited_by,
     }))
     .sort((a, b) =>
       (b.lastSeen ?? "").localeCompare(a.lastSeen ?? "") || (b.lastStudy ?? "").localeCompare(a.lastStudy ?? "") || a.username.localeCompare(b.username));
