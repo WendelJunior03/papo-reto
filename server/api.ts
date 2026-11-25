@@ -81,6 +81,8 @@ export interface ApiConfig {
   adminUsers?: string[];
   /** Salas ao vivo (sem isso, a aba avisa que não estão ligadas). */
   rooms?: RoomsHost;
+  /** Endereço oficial do app: o link de convite usa ele mesmo quando a pessoa está numa prévia. */
+  publicUrl?: string;
 }
 
 const serverAuthOf = (cfg: ApiConfig): ChatAuth | null =>
@@ -259,7 +261,7 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
     }
 
     case "GET /api/invite":
-      return json(await inviteInfo(db, user.id, new URL(req.url).origin));
+      return json(await inviteInfo(db, user.id, cfg.publicUrl ?? new URL(req.url).origin));
 
     case "POST /api/badge": {
       const b = await body(req, BadgeBody);
