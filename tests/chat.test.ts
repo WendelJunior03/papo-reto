@@ -138,3 +138,29 @@ describe("reconhece a chave", () => {
     expect(providerFor("AIza" + "x".repeat(35))).toBe("gemini");
   });
 });
+
+describe("contagem pro painel do dono", () => {
+  test("mensagem com a chave do app conta em ai_usage; com chave própria ou falha, não", async () => {
+    const { handleApi } = await import("../server/api");
+    const { bunDb } = await import("../server/db-bun");
+    const cfg = { db: bunDb(":memory:"), signupCode: "c", geminiKey: "AIza" + "x".repeat(35) };
+    const signup = await handleApi(
+      new Request("http://x/api/auth/signup", { method: "POST", body: JSON.stringify({ username: "ana", password: "12345678", code: "c" }) }),
+      cfg,
+    );
+    const cookie = signup!.headers.get("set-cookie")!.split(";")[0]!;
+    const chat = (headers: Record<string, string> = {}) =>
+      handleApi(new Request("http://x/api/chat", { method: "POST", headers: { cookie, ...headers }, body: JSON.stringify({ scenario: null, messages: [] }) }), cfg);
+    const count = async () => (await cfg.db.first<{ n: number }>("SELECT COALESCE(SUM(count), 0) AS n FROM ai_usage"))!.n;
+
+    geminiFails = false;
+    expect((await chat())!.status).toBe(200);
+    expect((await chat())!.status).toBe(200);
+    expect(await count()).toBe(2);
+    expect((await chat({ "x-ai-key": "sk-ant-test" }))!.status).toBe(200);
+    expect(await count()).toBe(2);
+    geminiFails = true;
+    expect((await chat())!.status).toBe(503);
+    expect(await count()).toBe(2);
+  });
+});

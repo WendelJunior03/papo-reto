@@ -9,9 +9,10 @@ import type { PixConfig } from "./lib/pix";
 import type { Reminder } from "./lib/api";
 import type { SessionState } from "../server/session";
 import type { Blank, Level, LyricLine } from "./lib/lyrics";
+import type { AdminStats, AdminUser } from "./lib/api";
 
-export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao";
-export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao"];
+export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "admin";
+export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "admin"];
 export type PracticeMode = "falar" | "ouvir" | "musica";
 
 export interface Practice {
@@ -100,6 +101,18 @@ export interface Music {
   paused: boolean;
 }
 
+/** Painel do dono: números, usuários e a senha temporária gerada (mostrada uma vez). */
+export interface AdminPanel {
+  loading: boolean;
+  error: string | null;
+  stats: AdminStats | null;
+  users: AdminUser[];
+  /** Usuário esperando confirmação pra gerar senha temporária. */
+  confirm: string | null;
+  busy: boolean;
+  temp: { username: string; password: string } | null;
+}
+
 export interface AppState {
   /** Usuário logado (dono do progresso). */
   user: string;
@@ -133,6 +146,9 @@ export interface AppState {
   support: { open: boolean; amount: number; nudge: string | null; daily: boolean };
   music: Music;
   musicSearch: boolean;
+  /** Dono do app (vem do /api/me; o servidor confere de novo em cada rota do painel). */
+  admin: boolean;
+  adminPanel: AdminPanel | null;
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -176,6 +192,8 @@ export function createState(
     reminder: null,
     music: emptyMusic(),
     musicSearch: false,
+    admin: false,
+    adminPanel: null,
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
   };

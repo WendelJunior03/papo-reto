@@ -19,12 +19,16 @@
  *   GET  /api/music/search?q=   vídeos do YouTube (precisa da chave do YouTube no servidor)
  *   GET  /api/music/video?url=  dados de um link do YouTube colado (sem chave)
  *   GET  /api/music/lyrics?q=&duration=  ou  ?id=   letra sincronizada (LRCLIB)
+ *   GET  /api/admin/stats   números do app (só dono, ADMIN_USERS)
+ *   GET  /api/admin/users   lista de usuários (só dono)
+ *   POST /api/admin/reset-password { username }   senha temporária, mostrada uma vez (só dono)
  */
 import { z } from "zod";
 import {
   clearCookie, createSession, destroySession, hashPassword, LOCK_MINUTES, MAX_FAILED,
   sessionCookie, userFromRequest, verifyPassword,
 } from "./auth";
+import { adminStats, adminUsers, countAiMessage, isAdmin, resetPassword, touchSeen } from "./admin";
 import { handleChat, providerFor, type ChatAuth } from "./chat";
 import type { Db } from "./db";
 import { latestOutbox, schedulePush, type Vapid } from "./push";
@@ -48,6 +52,8 @@ export interface ApiConfig {
   youtubeKey?: string;
   /** PIX pra doações (chave, nome e cidade do recebedor). Sem chave, o app não mostra o apoio. */
   pix?: { key: string; name: string; city: string };
+  /** Donos do app (ADMIN_USERS, sem diferenciar maiúscula): veem o painel com números e usuários. */
+  adminUsers?: string[];
 }
 
 const serverAuthOf = (cfg: ApiConfig): ChatAuth | null =>
@@ -190,8 +196,10 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
 
   switch (route) {
     case "GET /api/me":
+      await touchSeen(db, user.id);
       return json({
         username: user.username,
+        ...(isAdmin(cfg.adminUsers, user.username) ? { admin: true } : {}),
         serverAi: !!serverAuthOf(cfg),
         push: !!cfg.vapid,
         musicSearch: !!cfg.youtubeKey,
@@ -261,6 +269,8 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         } else {
           await db.run("UPDATE ai_sessions SET messages = messages + 1 WHERE user_id = ?", user.id);
         }
+        // Conta pro painel do dono (custo da chave do app). Chave própria não entra aqui.
+        await countAiMessage(db, user.id, now);
         const row2 = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
         return { session: sessionState(row2, now, sc) };
       });
@@ -342,6 +352,24 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         b.enabled ? 1 : 0,
       );
       return json({ time: b.time, tz: b.tz, enabled: b.enabled });
+    }
+  }
+
+  // Painel do dono: conferido aqui no servidor a cada pedido.
+  if (pathname.startsWith("/api/admin/")) {
+    if (!isAdmin(cfg.adminUsers, user.username)) return json({ error: "Só o dono do app pode ver isso." }, 403);
+    switch (route) {
+      case "GET /api/admin/stats":
+        return json(await adminStats(db));
+      case "GET /api/admin/users":
+        return json({ users: await adminUsers(db) });
+      case "POST /api/admin/reset-password": {
+        const b = await body(req, z.object({ username: Login.shape.username }));
+        if (b instanceof Response) return b;
+        const r = await resetPassword(db, b.username);
+        if (!r) return json({ error: "Usuário não encontrado." }, 404);
+        return json({ username: r.username, password: r.password });
+      }
     }
   }
 
