@@ -1,7 +1,7 @@
 import { packs, phraseId, type Phrase, type Tag } from "../data";
 import { esc, highlight, pad } from "../lib/html";
 import { isKnown } from "../lib/srs";
-import { ui } from "../icons";
+import { packIcon, ui } from "../icons";
 import { canPush, isIOS, isStandalone } from "../lib/device";
 import { shortcut } from "./shortcut";
 import { todayPlan, type PlanItem } from "../lib/plan";
@@ -206,6 +206,7 @@ export function renderToday(s: AppState): string {
     ${planCard(s, due, earDue)}
     ${reviewBanner}
     ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Frases e cena em áudio, até com a tela bloqueada.", attrs: `data-act="listen-open"`, cls: "listen-entry" })}
+    ${shortcut({ icon: packIcon("book"), tone: "u", title: "Historinha com suas frases", sub: "Um conto curtinho só com frases que você já sabe, com áudio e tradução.", attrs: `data-act="story-open"`, cls: "story-entry" })}
     <div class="sec-head" id="frases"><span class="eyebrow">Frases do dia</span><h2>Fale como <span class="mark">quem mora lá.</span></h2></div>
     <div class="list">${cards}</div>
   </div></section>

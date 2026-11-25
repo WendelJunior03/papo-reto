@@ -1,6 +1,16 @@
 /** Chamadas ao servidor do app (login e sincronização do progresso). */
 import type { SavedData } from "./storage";
 import type { PixConfig } from "./pix";
+import type { BadgeId } from "./invites";
+
+/** Cartão "Convide amigos": convite pessoal, amigos que entraram e selos. */
+export interface InviteInfo {
+  code: string;
+  link: string;
+  friends: number;
+  badges: BadgeId[];
+  badge: BadgeId | null;
+}
 
 /** Respostas do painel do dono (o servidor confere quem é dono). */
 export type AdminStats = Awaited<ReturnType<typeof import("../../server/admin").adminStats>>;
@@ -37,7 +47,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
-  me: () => call<{ username: string; serverAi: boolean; push?: boolean; musicSearch?: boolean; pix: PixConfig | null; admin?: boolean }>("GET", "me"),
+  me: () => call<{ username: string; serverAi: boolean; push?: boolean; musicSearch?: boolean; pix: PixConfig | null; admin?: boolean;
+    badges?: BadgeId[]; badge?: BadgeId | null }>("GET", "me"),
+  invite: () => call<InviteInfo>("GET", "invite"),
+  setBadge: (badge: BadgeId | null) => call<{ badge: BadgeId | null }>("POST", "badge", { badge }),
   aiSession: () => call<import("../../server/session").SessionState>("GET", "ai/session"),
   pushKey: () => call<{ publicKey: string }>("GET", "push/key"),
   pushSubscribe: (sub: PushSubscriptionJSON) => call<{ ok: true }>("POST", "push/subscribe", sub),

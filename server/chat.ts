@@ -52,7 +52,7 @@ const ChatRequest = z.object({
     .max(MAX_TURNS),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;
-type Turn = ChatRequest["messages"][number];
+export type Turn = ChatRequest["messages"][number];
 
 const CORRECTIONS = `Corrections go only in the correction fields, never in your reply. Correct the learner's last message when it has a grammar mistake, sounds unnatural or textbook-like, or is in Portuguese: give the way a native would say it. Leave small typos and perfectly fine messages alone (null).`;
 
@@ -86,13 +86,25 @@ ${CORRECTIONS}`;
 const KICKOFF: Turn = { role: "user", content: "(Start the role-play with a short, natural opening line.)" };
 const withKickoff = (messages: Turn[]): Turn[] => (messages[0]?.role === "user" ? messages : [KICKOFF, ...messages]);
 
-class ChatFailure extends Error {
+export class ChatFailure extends Error {
   constructor(message: string, readonly status: number, readonly detail?: string[]) {
     super(message);
   }
 }
 
-async function askAnthropic(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
+/** Um pedido com resposta em JSON no formato do schema (conversa, historinha...). */
+export interface AskRequest<S extends z.ZodType> {
+  system: string;
+  /** Precisa começar por uma mensagem do usuário. */
+  messages: Turn[];
+  schema: S;
+  /** Nome do formato (a OpenAI exige). */
+  name: string;
+  /** Limite de tokens da resposta no Gemini. */
+  maxTokens: number;
+}
+
+async function askAnthropic<S extends z.ZodType>(auth: ChatAuth, r: AskRequest<S>): Promise<z.infer<S>> {
   const client = new Anthropic({ apiKey: auth.key });
   try {
     const response = await client.beta.messages.parse({
@@ -100,9 +112,9 @@ async function askAnthropic(auth: ChatAuth, body: ChatRequest): Promise<ChatRepl
       max_tokens: 2000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      output_config: { effort: "low", format: betaZodOutputFormat(ChatReply) },
-      system: systemPrompt(body.scenario),
-      messages: withKickoff(body.messages),
+      output_config: { effort: "low", format: betaZodOutputFormat(r.schema) },
+      system: r.system,
+      messages: r.messages,
     });
     if (response.stop_reason === "refusal" || !response.parsed_output) {
       throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
@@ -121,17 +133,17 @@ async function askAnthropic(auth: ChatAuth, body: ChatRequest): Promise<ChatRepl
   }
 }
 
-async function askOpenAI(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
+async function askOpenAI<S extends z.ZodType>(auth: ChatAuth, r: AskRequest<S>): Promise<z.infer<S>> {
   const client = new OpenAI({ apiKey: auth.key });
   try {
     const completion = await client.chat.completions.parse({
       model: auth.model || DEFAULT_MODEL.openai,
-      messages: [{ role: "system", content: systemPrompt(body.scenario) }, ...withKickoff(body.messages)],
-      response_format: zodResponseFormat(ChatReply, "chat_reply"),
+      messages: [{ role: "system", content: r.system }, ...r.messages],
+      response_format: zodResponseFormat(r.schema, r.name),
     });
     const msg = completion.choices[0]?.message;
     if (!msg?.parsed) throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
-    return msg.parsed;
+    return msg.parsed as z.infer<S>;
   } catch (error) {
     if (error instanceof ChatFailure) throw error;
     if (error instanceof OpenAI.AuthenticationError || error instanceof OpenAI.PermissionDeniedError) {
@@ -148,12 +160,12 @@ async function askOpenAI(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
 }
 
 /** Gemini: tenta o modelo escolhido ou a lista padrão, pulando os sobrecarregados. */
-async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> {
+async function askGemini<S extends z.ZodType>(auth: ChatAuth, r: AskRequest<S>): Promise<z.infer<S>> {
   // O SDK repete sozinho até 5 vezes com espera de até 60 s; aqui quem decide é a lista de reserva.
   const ai = new GoogleGenAI({ apiKey: auth.key, httpOptions: { retryOptions: { attempts: 1 }, timeout: 8_000 } });
   const models = auth.model ? [auth.model] : [...GEMINI_FALLBACKS];
   const deadline = Date.now() + 14_000;
-  const contents = withKickoff(body.messages).map((m) => ({
+  const contents = r.messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
@@ -164,20 +176,20 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
     if (Date.now() > deadline) break; // não deixa a pessoa esperando mais de ~15 s
     if (round === 1 && model === models[0]) {
       if (!busy) break;
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((res) => setTimeout(res, 1500));
     }
     try {
       const response = await ai.models.generateContent({
         model,
         contents,
         config: {
-          systemInstruction: systemPrompt(body.scenario),
+          systemInstruction: r.system,
           responseMimeType: "application/json",
-          responseJsonSchema: z.toJSONSchema(ChatReply),
-          maxOutputTokens: 800,
+          responseJsonSchema: z.toJSONSchema(r.schema),
+          maxOutputTokens: r.maxTokens,
         },
       });
-      const parsed = ChatReply.safeParse(JSON.parse(response.text ?? "null"));
+      const parsed = r.schema.safeParse(JSON.parse(response.text ?? "null"));
       if (parsed.success) return parsed.data;
       throw new ChatFailure("A IA não conseguiu responder essa. Tenta reformular.", 502);
     } catch (error) {
@@ -203,6 +215,13 @@ async function askGemini(auth: ChatAuth, body: ChatRequest): Promise<ChatReply> 
   throw new ChatFailure(busy ? "A IA está sobrecarregada agora. Tenta de novo em alguns segundos." : "Nenhum modelo do Gemini disponível agora.", 503, tried);
 }
 
+/** Manda o pedido pra empresa da chave (Gemini, OpenAI ou Anthropic). Erros viram ChatFailure. */
+export function ask<S extends z.ZodType>(auth: ChatAuth, r: AskRequest<S>): Promise<z.infer<S>> {
+  return auth.provider === "openai" ? askOpenAI(auth, r)
+    : auth.provider === "gemini" ? askGemini(auth, r)
+    : askAnthropic(auth, r);
+}
+
 /**
  * `extra` vai junto na resposta. Pode ser uma função: ela só roda se a IA responder
  * (ex.: começar/contar a sessão só quando deu certo).
@@ -219,10 +238,13 @@ export async function handleChat(
     return json({ error: "Pedido inválido" }, 400);
   }
   try {
-    const reply =
-      auth.provider === "openai" ? await askOpenAI(auth, body)
-      : auth.provider === "gemini" ? await askGemini(auth, body)
-      : await askAnthropic(auth, body);
+    const reply = await ask(auth, {
+      system: systemPrompt(body.scenario),
+      messages: withKickoff(body.messages),
+      schema: ChatReply,
+      name: "chat_reply",
+      maxTokens: 800,
+    });
     return json({ ...reply, ...(typeof extra === "function" ? await extra() : extra) });
   } catch (error) {
     if (error instanceof ChatFailure) return json({ error: error.message, ...(error.detail ? { detail: error.detail } : {}) }, error.status);
@@ -232,7 +254,7 @@ export async function handleChat(
   }
 }
 
-const json = (data: unknown, status = 200): Response =>
+export const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff" },

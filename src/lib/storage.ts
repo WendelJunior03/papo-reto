@@ -1,6 +1,7 @@
 import type { Progress } from "./srs";
 import type { EarWords } from "./ear";
 import type { DateKey } from "./dates";
+import { mergeStories, type Story } from "./story";
 
 /** Tudo que o app guarda por usuário (no aparelho e, com login, também no servidor). */
 export interface SavedData {
@@ -29,6 +30,8 @@ export interface SavedData {
   practiceAt: DateKey | null;
   /** Já viu as boas-vindas (os 3 passos da primeira entrada). */
   onboarded: boolean;
+  /** Últimas historinhas (mais recente primeiro), pra reabrir sem internet. */
+  stories: Story[];
 }
 
 export interface SongAttempt {
@@ -76,6 +79,7 @@ export const emptyData = (): SavedData => ({
   reminderTime: "20:00", reminderAdded: false, dialogues: {}, supportPromptAt: null, supported: false, history: {}, songs: {}, earWords: {},
   dialogueAt: null, practiceAt: null,
   onboarded: false,
+  stories: [],
 });
 
 /** Dado salvo antes das boas-vindas existirem: quem já tem progresso conta como visto. */
@@ -96,7 +100,7 @@ function read(key: string): Partial<SavedData> | null {
 
 export function load(user: string): SavedData {
   const own = read(keyFor(user));
-  if (own) return { ...emptyData(), ...own, onboarded: wasOnboarded(own) };
+  if (own) return { ...emptyData(), ...own, onboarded: wasOnboarded(own), stories: mergeStories(own.stories, null) };
   // Progresso de antes de existir login: o primeiro usuário que entrar neste aparelho herda.
   const legacy = read(PREFIX);
   if (legacy) {

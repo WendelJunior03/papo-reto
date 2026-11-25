@@ -5,8 +5,10 @@ import { packIcon, ui } from "../icons";
 import { knownInPack, type AppState } from "../state";
 import { shortcut } from "./shortcut";
 import { supportCard } from "./support";
+import { accountSelo, inviteCard } from "./badges";
+import { badgeById } from "../lib/invites";
 
-export function renderSituations(s: AppState): string {
+export function renderSituations(s: AppState, canShare = false): string {
   const total = packs.reduce((n, p) => n + p.phrases.length, 0);
   const tiles = packs
     .map((pack, i) => {
@@ -31,9 +33,10 @@ export function renderSituations(s: AppState): string {
     ${shortcut({ icon: ui.car, tone: "tr", title: "Ouvir no carro", sub: "Revisão em áudio do que você já sabe.", attrs: `data-act="listen-open" data-source="revisao"` })}
     <div class="grid">${tiles}</div>
     ${supportCard(s)}
-    <div class="account">
-      <span class="avatar">${esc(s.user.slice(0, 1).toUpperCase())}</span>
-      <div><span class="mono">Sua conta</span><b>${esc(s.user)}</b><small>Progresso salvo na conta — entre em qualquer aparelho.</small></div>
+    ${inviteCard(s, canShare)}
+    <div class="account${s.badge ? " with-selo" : ""}">
+      ${accountSelo(s) || `<span class="avatar">${esc(s.user.slice(0, 1).toUpperCase())}</span>`}
+      <div><span class="mono">Sua conta</span><b>${esc(s.user)}</b>${s.badge ? `<span class="account-selo">Selo ${esc(badgeById(s.badge)!.name)}</span>` : ""}<small>Progresso salvo na conta — entre em qualquer aparelho.</small></div>
       <button class="btn btn-ghost btn-sm" data-act="logout">Sair</button>
       ${s.admin ? `<button class="btn btn-ghost btn-sm account-admin" data-act="goto-admin">${ui.chart}Painel do dono</button>` : ""}
     </div>

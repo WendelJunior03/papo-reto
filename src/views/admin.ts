@@ -55,6 +55,8 @@ function userRow(u: AdminUser, s: AppState): string {
     <td class="num">${u.days}</td>
     <td class="num">${u.streak}</td>
     <td class="num">${u.ai7d}</td>
+    <td class="num">${u.invites || "—"}</td>
+    <td>${u.invitedBy ? esc(u.invitedBy) : "—"}</td>
     <td>${u.supporter ? "Sim" : "—"}</td>
     <td>${u.push ? "Ligado" : "—"}</td>
     <td>${action}</td>
@@ -130,7 +132,7 @@ export function renderAdmin(s: AppState): string {
         <thead><tr>
           <th scope="col">Usuário</th><th scope="col">Desde</th><th scope="col">Último acesso</th><th scope="col">Último estudo</th>
           <th scope="col" class="num">Frases</th><th scope="col" class="num">Dias</th><th scope="col" class="num">Seguidos</th>
-          <th scope="col" class="num">IA 7d</th><th scope="col">Apoio</th><th scope="col">Aviso</th><th scope="col"><span class="sr">Ação</span></th>
+          <th scope="col" class="num">IA 7d</th><th scope="col" class="num">Convidou</th><th scope="col">Convite de</th><th scope="col">Apoio</th><th scope="col">Aviso</th><th scope="col"><span class="sr">Ação</span></th>
         </tr></thead>
         <tbody>${p.users.map((u) => userRow(u, s)).join("")}</tbody>
       </table>

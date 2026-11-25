@@ -13,6 +13,7 @@ import {
 } from "../lib/stats";
 import { ui } from "../icons";
 import { knownCount, knownInPack, streakDays, type AppState } from "../state";
+import { seloRow } from "./badges";
 
 /** Escala sequencial (do mais claro ao mais escuro). */
 const SEQ = ["#CFE5F8", "#8FC4EC", "#4EA0E0", "#2A7FCB", "#175FAE"];
@@ -269,7 +270,7 @@ export function renderEvolution(s: AppState): string {
     <div class="wrap evo-top"><button class="link-btn subtle" data-act="goto-hoje">${ui.back}Voltar</button></div>
     ${hero}
     <section class="band"><div class="wrap evo-grid">
-      ${weekCard}${habit}${memory}${growth}${speak}${ear}${badgeCard}${collection}
+      ${weekCard}${habit}${memory}${growth}${speak}${ear}${badgeCard}${seloRow(s)}${collection}
     </div></section>
   </div>`;
 }
