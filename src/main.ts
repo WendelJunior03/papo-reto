@@ -46,7 +46,7 @@ let s!: AppState;
 const app = document.getElementById("app")!;
 const stats = document.getElementById("stats")!;
 const toastEl = document.getElementById("toast")!;
-const installBtn = document.getElementById("install") as HTMLButtonElement;
+const installBanner = document.getElementById("install-banner")!;
 const sheet = document.getElementById("sheet")!;
 
 /** Copia pro clipboard; se o navegador não deixar, seleciona o texto pra copiar na mão. */
@@ -205,8 +205,10 @@ async function boot(): Promise<void> {
 /* ---------- render ---------- */
 function render(): void {
   const days = streakDays(s);
-  stats.innerHTML = `<button class="stats-btn" data-act="goto-evolucao" aria-label="Ver sua evolução">
-    <span class="st at">${days} ${days === 1 ? "dia" : "dias"}</span><span class="st ok">${knownCount(s)}</span>${ui.chart}</button>`;
+  const known = knownCount(s);
+  // Uma pílula só: sequência · frases dominadas; toque abre a Evolução.
+  stats.innerHTML = `<button class="stats-pill" data-act="goto-evolucao" aria-label="${days} ${days === 1 ? "dia" : "dias"} seguidos, ${known} ${known === 1 ? "frase" : "frases"}. Ver sua evolução">
+    <span class="sp-at">${days}</span><i aria-hidden="true">·</i><span class="sp-ok">${known} ${known === 1 ? "frase" : "frases"}</span>${ui.chart}</button>`;
   if (s.tab === "dialogo") ensureDialogue(s);
   if (s.tab === "ouvir" && !carStatus().playlist) loadListen(false);
   // Música tocando: só atualiza as partes que mudam (redesenhar pararia o player).
@@ -231,7 +233,14 @@ function render(): void {
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
   );
-  installBtn.hidden = !s.canInstall;
+  // Instalar: cartão discreto só no Hoje; "Agora não" guarda junto com a dica do iPhone.
+  installBanner.innerHTML = s.canInstall && !s.data.installHintDismissed && s.tab === "hoje"
+    ? `<div class="wrap"><div class="install-card">${ui.download}
+        <p><b>Instale o Papo Reto</b><span>Abre como app e funciona sem internet.</span></p>
+        <button class="btn btn-am btn-sm" data-act="install">Instalar</button>
+        <button class="install-x" data-act="dismiss-ios" aria-label="Agora não">${ui.x}</button>
+      </div></div>`
+    : "";
   const cv = document.getElementById("dots");
   if (cv instanceof HTMLCanvasElement) drawDots(cv, s.packIndex);
   sheet.innerHTML = supportSheet(s) + supportNudge(s);
@@ -880,6 +889,7 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     playCurrent();
   },
   "dismiss-ios": () => { s.data.installHintDismissed = true; persist(s); render(); },
+  install: () => void promptInstall(),
   pick: (el) => { goToPack(s, Number(el.dataset.pack)); setTab("hoje"); },
   logout: () => void logout(),
   "goto-dialogo": () => setTab("dialogo"),
@@ -1285,14 +1295,14 @@ window.addEventListener("appinstalled", () => {
   render();
   toast("App instalado", true);
 });
-installBtn.addEventListener("click", async () => {
+async function promptInstall(): Promise<void> {
   if (!installEvent) return;
   await installEvent.prompt();
   await installEvent.userChoice;
   installEvent = null;
   s.canInstall = false;
   render();
-});
+}
 
 if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
