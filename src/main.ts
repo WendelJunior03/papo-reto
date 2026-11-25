@@ -37,6 +37,8 @@ import { loadYouTube, YT_ERRORS, type YTPlayer } from "./lib/youtube";
 import { renderToday } from "./views/today";
 import { renderPractice } from "./views/practice";
 import { renderSituations } from "./views/situations";
+import { headerSelo, seloSheet, shareText } from "./views/badges";
+import { badgeById, newBadges, normalizeInvite, type BadgeId } from "./lib/invites";
 import { renderListen } from "./views/listen";
 import { playlistFiles, type ListenLang, type ListenSource } from "./lib/playlist";
 import {
@@ -72,7 +74,21 @@ function checkKnownMilestone(before: number): void {
 }
 
 /* ---------- login ---------- */
-const auth: AuthView = { mode: "login", error: null, busy: false, username: "" };
+const auth: AuthView = { mode: "login", error: null, busy: false, username: "", code: "" };
+
+/** Link de convite (?convite=CODE): lido uma vez, já abre "Criar conta" com o código, e sai da barra de endereço. */
+const inviteFromUrl = (() => {
+  const url = new URL(location.href);
+  const raw = url.searchParams.get("convite");
+  if (raw === null) return null;
+  url.searchParams.delete("convite");
+  history.replaceState(null, "", url.pathname + url.search + url.hash);
+  return normalizeInvite(raw);
+})();
+if (inviteFromUrl) {
+  auth.mode = "signup";
+  auth.code = inviteFromUrl;
+}
 
 function renderAuthScreen(): void {
   document.body.classList.add("auth");
@@ -88,6 +104,7 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
   const username = String(f.get("username") ?? "").trim();
   const password = String(f.get("password") ?? "");
   auth.username = username;
+  if (auth.mode === "signup") auth.code = String(f.get("code") ?? "").trim();
   if (!username || !password) {
     auth.error = "Preencha usuário e senha.";
     return renderAuthScreen();
@@ -98,12 +115,14 @@ async function submitAuth(form: HTMLFormElement): Promise<void> {
   try {
     const res =
       auth.mode === "signup"
-        ? await api.signup(username, password, String(f.get("code") ?? ""))
+        ? await api.signup(username, password, auth.code)
         : await api.login(username, password);
     auth.busy = false;
-    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false, admin: false }));
+    auth.code = "";
+    const me = await api.me().catch(() => ({ serverAi: false, pix: null, push: false, musicSearch: false, admin: false, badges: [], badge: null }));
     musicSearchOn = !!me.musicSearch;
     adminOn = !!me.admin;
+    meBadges = { badges: me.badges ?? [], badge: me.badge ?? null };
     await start(res.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     auth.busy = false;
@@ -156,6 +175,69 @@ window.addEventListener("online", () => {
 let musicSearchOn = false;
 /** Dono do app (do /api/me). Só mostra o botão do painel; o servidor confere de novo. */
 let adminOn = false;
+/** Selos do /api/me (o mesmo esquema do adminOn: o estado é refeito no start). */
+let meBadges: { badges: BadgeId[]; badge: BadgeId | null } = { badges: [], badge: null };
+
+/* ---------- convites e selos ---------- */
+const seenKey = (user: string): string => `papo-reto:selos:${user.toLowerCase()}`;
+
+/** Compara os selos com os já vistos neste aparelho; um selo novo abre a comemoração (uma vez só). */
+function checkNewBadges(earned: BadgeId[]): void {
+  let seen: string[] = [];
+  try {
+    const raw = localStorage.getItem(seenKey(s.user));
+    seen = raw ? (JSON.parse(raw) as string[]) : [];
+    localStorage.setItem(seenKey(s.user), JSON.stringify(earned));
+  } catch {
+    return; // sem armazenamento, melhor não comemorar a cada abertura
+  }
+  const fresh = newBadges(earned, Array.isArray(seen) ? seen : []);
+  if (fresh.length) s.celebrate = fresh[0]!;
+}
+
+function applyBadges(badges: BadgeId[], badge: BadgeId | null): void {
+  s.badges = badges;
+  s.badge = badge;
+  checkNewBadges(badges);
+}
+
+/** Convite pessoal (o servidor cria o código no primeiro pedido). */
+async function loadInvite(): Promise<void> {
+  s.inviteError = null;
+  try {
+    const inv = await api.invite();
+    s.invite = inv;
+    applyBadges(inv.badges, inv.badge);
+  } catch (e) {
+    if (!s.invite) s.inviteError = e instanceof ApiError ? e.message : "Não deu pra carregar seu convite.";
+  }
+  render();
+}
+
+async function setBadge(badge: BadgeId | null): Promise<void> {
+  try {
+    const r = await api.setBadge(badge);
+    s.badge = r.badge;
+    if (s.invite) s.invite.badge = r.badge;
+    s.celebrate = null;
+    render();
+    toast(r.badge ? `Selo ${badgeById(r.badge)!.name} em uso` : "Selo tirado", true);
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : "Não deu pra trocar o selo agora.");
+  }
+}
+
+async function shareInvite(): Promise<void> {
+  const inv = s.invite;
+  if (!inv) return;
+  try {
+    await navigator.share({ title: "Papo Reto", text: shareText(inv.link) });
+  } catch (e) {
+    // Cancelar o compartilhamento não é erro; outra falha cai no copiar.
+    if (!(e instanceof DOMException && e.name === "AbortError")) void copy(shareText(inv.link), "Mensagem copiada — cole na conversa");
+  }
+}
+
 async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
   setLastUser(user);
   if (online) savePix(pix);
@@ -165,16 +247,19 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
   s.pushAvailable = push;
   s.admin = online && adminOn;
   if (s.tab === "admin" && !s.admin) s.tab = "hoje";
+  if (online) applyBadges(meBadges.badges, meBadges.badge);
   render();
   if (s.tab === "admin") void loadAdmin();
   if (!online) return;
+  if (s.tab === "situacoes") void loadInvite();
   try {
     const remote = await api.getProgress();
     const merged = mergeData(load(user), remote.data);
-    const { tab, adminPanel } = s;
+    const { tab, adminPanel, invite, inviteError, badges, badge, celebrate } = s;
     s = createState(user, new Date(), merged, serverAi, pix);
     s.tab = tab;
     s.adminPanel = adminPanel;
+    Object.assign(s, { invite, inviteError, badges, badge, celebrate });
     s.canInstall = installEvent !== null;
     s.pushAvailable = push;
     s.musicSearch = musicSearchOn;
@@ -199,6 +284,7 @@ async function boot(): Promise<void> {
     const me = await api.me();
     musicSearchOn = !!me.musicSearch;
     adminOn = !!me.admin;
+    meBadges = { badges: me.badges ?? [], badge: me.badge ?? null };
     await start(me.username, true, me.serverAi, me.pix, !!me.push);
   } catch (e) {
     const cached = lastUser();
@@ -236,7 +322,7 @@ function render(): void {
   const days = streakDays(s);
   const known = knownCount(s);
   // Uma pílula só: sequência · frases dominadas; toque abre a Evolução.
-  stats.innerHTML = `<button class="stats-pill" data-act="goto-evolucao" aria-label="${days} ${days === 1 ? "dia" : "dias"} seguidos, ${known} ${known === 1 ? "frase" : "frases"}. Ver sua evolução">
+  stats.innerHTML = `${headerSelo(s)}<button class="stats-pill" data-act="goto-evolucao" aria-label="${days} ${days === 1 ? "dia" : "dias"} seguidos, ${known} ${known === 1 ? "frase" : "frases"}. Ver sua evolução">
     <span class="sp-at">${days}</span><i aria-hidden="true">·</i><span class="sp-ok">${known} ${known === 1 ? "frase" : "frases"}</span>${ui.chart}</button>`;
   if (s.tab === "dialogo") ensureDialogue(s);
   if (s.tab === "ouvir" && !carStatus().playlist) loadListen(false);
@@ -246,7 +332,7 @@ function render(): void {
     document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
       b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
     );
-    sheet.innerHTML = supportSheet(s) + supportNudge(s);
+    sheet.innerHTML = supportSheet(s) + supportNudge(s) + seloSheet(s);
     return;
   }
   app.innerHTML =
@@ -259,7 +345,7 @@ function render(): void {
     : s.tab === "ouvir" ? renderListen(s, carStatus(), wakeLockAvailable)
     : s.tab === "historia" ? renderStory(s)
     : s.tab === "admin" && s.admin ? renderAdmin(s)
-    : renderSituations(s);
+    : renderSituations(s, "share" in navigator);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
   );
@@ -273,8 +359,8 @@ function render(): void {
     : "";
   const cv = document.getElementById("dots");
   if (cv instanceof HTMLCanvasElement) drawDots(cv, s.packIndex);
-  sheet.innerHTML = supportSheet(s) + supportNudge(s);
-  document.body.classList.toggle("sheet-open", s.support.open);
+  sheet.innerHTML = supportSheet(s) + supportNudge(s) + seloSheet(s);
+  document.body.classList.toggle("sheet-open", s.support.open || !!s.celebrate);
   cachePackAudio();
   if (s.tab === "musica" && s.music.video) void mountPlayer();
 }
@@ -539,6 +625,7 @@ function setTab(tab: Tab): void {
   const revealed = tab === "dialogo" ? ensureDialogue(s) : [];
   if (tab === "ia") void refreshAiSession();
   if (tab === "admin") void loadAdmin();
+  if (tab === "situacoes") void loadInvite();
   render();
   window.scrollTo(0, 0);
   playLines(revealed);
@@ -1029,6 +1116,13 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     const story = currentStory(s);
     if (story) speakTtsSequence(story.lines.map((l) => l.en));
   },
+  /* convites e selos */
+  "invite-copy": () => { if (s.invite) void copy(s.invite.link, "Link copiado", "invite-link"); },
+  "invite-share": () => void shareInvite(),
+  "invite-reload": () => void loadInvite(),
+  "badge-use": (el) => void setBadge(el.dataset.badge as BadgeId),
+  "badge-off": () => void setBadge(null),
+  "selo-later": () => { s.celebrate = null; render(); },
 
   /* ouvir no carro: o toque de abrir já dá o play (no iPhone o áudio só começa a partir de um toque) */
   "listen-open": (el) => {
@@ -1365,6 +1459,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && s?.onboarding) return finishOnboarding();
   if (e.key === "Escape" && s?.support.open) {
     s.support.open = false;
+    return render();
+  }
+  if (e.key === "Escape" && s?.celebrate) {
+    s.celebrate = null;
     return render();
   }
   // Enter envia; Shift+Enter quebra linha.

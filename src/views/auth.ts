@@ -7,6 +7,8 @@ export interface AuthView {
   error: string | null;
   busy: boolean;
   username: string;
+  /** Código de convite (vem preenchido pelo link ?convite=). */
+  code: string;
 }
 
 export function renderAuth(v: AuthView): string {
@@ -32,8 +34,8 @@ export function renderAuth(v: AuthView): string {
       ${
         signup
           ? `<label class="field"><span>Código de convite</span>
-              <input id="auth-code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required>
-              <small>Quem administra o app te passa esse código.</small></label>`
+              <input id="auth-code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required value="${esc(v.code)}">
+              <small>${v.code ? "Convite de um amigo — já está preenchido." : "Use o convite de um amigo ou o código de quem administra o app."}</small></label>`
           : ""
       }
       ${v.error ? `<p class="dl-err" role="alert">${esc(v.error)}</p>` : ""}

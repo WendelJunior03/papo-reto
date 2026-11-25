@@ -10,7 +10,8 @@ import type { Reminder } from "./lib/api";
 import type { SessionState } from "../server/session";
 import type { Blank, Level, LyricLine } from "./lib/lyrics";
 import { buildPlaylist, type ListenLang, type ListenSource, type Playlist } from "./lib/playlist";
-import type { AdminStats, AdminUser } from "./lib/api";
+import type { AdminStats, AdminUser, InviteInfo } from "./lib/api";
+import type { BadgeId } from "./lib/invites";
 import { mergeStories, pickKnownPhrases, type Story } from "./lib/story";
 
 /**
@@ -183,6 +184,14 @@ export interface AppState {
   /** Boas-vindas da primeira entrada: passo aberto (1–3) ou 0 = fechada. */
   onboarding: number;
   story: StoryScreen;
+  /** Cartão "Convide amigos" (carregado ao abrir Situações; null = ainda não veio). */
+  invite: InviteInfo | null;
+  inviteError: string | null;
+  /** Selos conquistados e o selo em uso (vêm do /api/me e do /api/invite). */
+  badges: BadgeId[];
+  badge: BadgeId | null;
+  /** Selo novo pra comemorar (janela "Você ganhou o selo X!"). */
+  celebrate: BadgeId | null;
 }
 
 /** Quantas revisões atrasadas entram junto com o pacote no treino. */
@@ -230,6 +239,11 @@ export function createState(
     adminPanel: null,
     onboarding: 0,
     story: { current: data.stories[0]?.id ?? null, loading: false, error: null, showPt: false, flipped: new Set(), left: null },
+    invite: null,
+    inviteError: null,
+    badges: [],
+    badge: null,
+    celebrate: null,
     pix,
     support: { open: false, amount: 0, nudge: null, daily: false },
     listen: { source: "hoje", lang: "enpt", slow: false, awake: false, packIndex: todayIndex },
