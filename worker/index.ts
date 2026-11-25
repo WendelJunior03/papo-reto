@@ -20,6 +20,8 @@ interface Env {
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   SIGNUP_CODE?: string;
+  /** "1" abre o cadastro pra qualquer pessoa (código de convite opcional). */
+  OPEN_SIGNUP?: string;
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   PIX_KEY?: string;
@@ -83,6 +85,7 @@ function config(env: Env): ApiConfig {
     db: d1Db(env.DB),
     publicUrl: PUBLIC_URL,
     signupCode: env.SIGNUP_CODE,
+    openSignup: env.OPEN_SIGNUP === "1" || env.OPEN_SIGNUP === "true",
     geminiKey: env.GEMINI_API_KEY,
     youtubeKey: env.YOUTUBE_API_KEY,
     anthropicKey: env.ANTHROPIC_API_KEY,

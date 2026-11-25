@@ -9,6 +9,8 @@ export interface AuthView {
   username: string;
   /** Código de convite (vem preenchido pelo link ?convite=). */
   code: string;
+  /** Cadastro aberto: o código vira opcional (vem do /api/auth/signup-info). */
+  open: boolean;
 }
 
 export function renderAuth(v: AuthView): string {
@@ -31,21 +33,28 @@ export function renderAuth(v: AuthView): string {
         <input id="auth-pass" name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}"
           required minlength="${signup ? 8 : 1}" maxlength="128">
         ${signup ? `<small>Pelo menos 8 caracteres.</small>` : ""}</label>
-      ${
-        signup
-          ? `<label class="field"><span>Código de convite</span>
-              <input id="auth-code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required value="${esc(v.code)}">
-              <small>${v.code ? "Convite de um amigo — já está preenchido." : "Use o convite de um amigo ou o código de quem administra o app."}</small></label>`
-          : ""
-      }
+      ${signup ? codeField(v) : ""}
       ${v.error ? `<p class="dl-err" role="alert">${esc(v.error)}</p>` : ""}
       <button class="btn btn-am btn-lg" type="submit" ${v.busy ? "disabled" : ""}>${v.busy ? "Aguarde…" : signup ? "Criar conta" : "Entrar"}</button>
       <p class="auth-switch">${
         signup
           ? `Já tem conta? <button type="button" class="link-btn" data-auth="login">Entrar</button>`
-          : `Primeira vez? <button type="button" class="link-btn" data-auth="signup">Criar conta com convite</button>`
+          : `Primeira vez? <button type="button" class="link-btn" data-auth="signup">${v.open ? "Criar conta grátis" : "Criar conta com convite"}</button>`
       }</p>
     </form>
   </div></section>
   </div>`;
+}
+
+/** Código de convite (opcional com o cadastro aberto) + campo-isca invisível contra robô. */
+function codeField(v: AuthView): string {
+  const hint = v.code
+    ? "Convite de um amigo — já está preenchido."
+    : v.open
+      ? "Tem convite de um amigo? Cole aqui que ele ganha um selo."
+      : "Use o convite de um amigo ou o código de quem administra o app.";
+  return `<label class="field"><span>Código de convite${v.open ? " <em class=\"opt\">(opcional)</em>" : ""}</span>
+      <input id="auth-code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" ${v.open ? "" : "required"} value="${esc(v.code)}">
+      <small>${hint}</small></label>
+    <div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>`;
 }

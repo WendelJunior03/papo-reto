@@ -243,3 +243,54 @@ describe("página de divulgação", () => {
     expect((await call("GET", "pix", undefined, false)).data).toEqual({ pix: { key: "chave-teste", name: "Fulano", city: "Cidade" } });
   });
 });
+
+describe("cadastro aberto", () => {
+  const signup = (username: string, extra: Record<string, unknown> = {}, ip = "1.1.1.1") =>
+    handleApi(
+      new Request("http://localhost/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip },
+        body: JSON.stringify({ username, password: "senha-boa-123", code: "", ...extra }),
+      }),
+      cfg,
+    ).then(async (r) => ({ status: r!.status, data: (await r!.json()) as Record<string, unknown> }));
+
+  test("fechado sem código; aberto aceita sem código", async () => {
+    expect((await signup("ana")).status).toBe(403);
+    cfg.openSignup = true;
+    expect((await signup("ana")).status).toBe(201);
+    expect((await call("GET", "auth/signup-info", undefined, false)).data).toEqual({ open: true, closed: false });
+  });
+
+  test("aberto: código errado ainda é recusado (não perde o crédito do amigo em silêncio)", async () => {
+    cfg.openSignup = true;
+    expect(await signup("bia", { code: "XXXXXXXX" })).toMatchObject({ status: 403 });
+    expect((await signup("bia", { code: "convite-123" })).status).toBe(201);
+  });
+
+  test("campo-isca preenchido = robô, não cria conta", async () => {
+    cfg.openSignup = true;
+    expect((await signup("robo", { website: "http://spam" })).status).toBe(400);
+    expect((await call("POST", "auth/login", { username: "robo", password: "senha-boa-123" })).status).toBe(401);
+  });
+
+  test("no máximo 3 contas por rede por hora; outra rede segue livre", async () => {
+    cfg.openSignup = true;
+    for (const u of ["user1", "user2", "user3"]) expect((await signup(u)).status).toBe(201);
+    expect((await signup("user4")).status).toBe(429);
+    expect((await signup("user5", {}, "2.2.2.2")).status).toBe(201);
+  });
+
+  test("tentativas erradas demais da mesma rede travam por uma hora", async () => {
+    for (let i = 0; i < 10; i++) expect((await signup(`chute${i}`, { code: "errado" })).status).toBe(403);
+    expect((await signup("chute10", { code: "convite-123" })).status).toBe(429);
+  });
+
+  test("teto do dia vale pro app inteiro", async () => {
+    cfg.openSignup = true;
+    cfg.signupLimits = { perDay: 2 };
+    expect((await signup("dia1", {}, "3.3.3.1")).status).toBe(201);
+    expect((await signup("dia2", {}, "3.3.3.2")).status).toBe(201);
+    expect((await signup("dia3", {}, "3.3.3.3")).status).toBe(429);
+  });
+});

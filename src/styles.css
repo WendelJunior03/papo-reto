@@ -815,3 +815,7 @@ p.story-title{font-size:clamp(24px,6.5vw,30px)}
 .room-sum{width:100%}
 .room-sum table{min-width:0}
 .room-sum th small{font:400 11px var(--f-mono);color:#B4232A;text-transform:uppercase;margin-left:4px}
+
+/* Cadastro aberto: código opcional e campo-isca (fora da tela, nunca visível) */
+.field .opt{font-style:normal;font-weight:400;color:var(--n500)}
+.hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
