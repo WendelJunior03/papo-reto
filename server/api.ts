@@ -25,11 +25,13 @@
  *   GET  /api/admin/stats   números do app (só dono, ADMIN_USERS)
  *   GET  /api/admin/users   lista de usuários (só dono)
  *   POST /api/admin/reset-password { username }   senha temporária, mostrada uma vez (só dono)
+ *   POST /api/rooms         { size: 2|4, level }   cria uma Sala ao vivo e devolve o código
+ *   GET  /api/rooms/:code/ws   WebSocket da sala (o login é conferido aqui, antes de chegar na sala)
  */
 import { z } from "zod";
 import {
   clearCookie, createSession, destroySession, hashPassword, LOCK_MINUTES, MAX_FAILED,
-  sessionCookie, userFromRequest, verifyPassword,
+  sessionCookie, userFromRequest, verifyPassword, type SessionUser,
 } from "./auth";
 import { adminStats, adminUsers, countAiMessage, isAdmin, resetPassword, touchSeen } from "./admin";
 import { handleChat, providerFor, type ChatAuth } from "./chat";
@@ -41,6 +43,18 @@ import { HHMM, validTimeZone } from "./reminders";
 import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInfo } from "./music";
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 import { countStory, DEFAULT_STORIES_PER_DAY, handleStory, storiesToday } from "./story";
+import { CODE_RE, newRoomCode, RoomCreate, type RoomInit } from "./room-core";
+
+/**
+ * Onde as Salas ao vivo moram: Durable Object no Cloudflare, memória no `bun dev`/`bun preview`.
+ * A API só cria e confere o login; o resto (palavra, avisos, tempo) é com a sala.
+ */
+export interface RoomsHost {
+  /** false = o código já existia (a API sorteia outro). */
+  create(init: RoomInit): Promise<boolean>;
+  /** Abre o WebSocket da sala pra quem já está logado. */
+  connect(req: Request, code: string, user: SessionUser): Promise<Response>;
+}
 
 export interface ApiConfig {
   db: Db;
@@ -65,6 +79,8 @@ export interface ApiConfig {
   pix?: { key: string; name: string; city: string };
   /** Donos do app (ADMIN_USERS, sem diferenciar maiúscula): veem o painel com números e usuários. */
   adminUsers?: string[];
+  /** Salas ao vivo (sem isso, a aba avisa que não estão ligadas). */
+  rooms?: RoomsHost;
 }
 
 const serverAuthOf = (cfg: ApiConfig): ChatAuth | null =>
@@ -212,6 +228,19 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
   // Daqui pra baixo, só logado.
   const user = await userFromRequest(db, req);
   if (!user) return json({ error: "Faça login pra continuar." }, 401);
+
+  // Salas ao vivo: o WebSocket tem o código no caminho.
+  const ws = /^\/api\/rooms\/([^/]+)\/ws$/.exec(pathname);
+  if (ws && req.method === "GET") {
+    if (!cfg.rooms) return json({ error: "Salas ao vivo não estão ligadas neste servidor." }, 503);
+    if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return json({ error: "Use WebSocket." }, 426);
+    // WebSocket não tem CORS: outro site poderia abrir a sala com o cookie de quem está logado.
+    const origin = req.headers.get("origin");
+    if (origin && origin !== new URL(req.url).origin) return json({ error: "Origem não permitida." }, 403);
+    const code = ws[1]!;
+    if (!CODE_RE.test(code)) return json({ error: "Código de sala inválido." }, 400);
+    return cfg.rooms.connect(req, code, user);
+  }
 
   switch (route) {
     case "GET /api/me": {
@@ -361,6 +390,19 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         if (error instanceof MusicError) return json({ error: error.message }, error.status);
         return json({ error: "Sem conexão com o YouTube ou com o banco de letras agora." }, 502);
       }
+    }
+
+    case "POST /api/rooms": {
+      if (!cfg.rooms) return json({ error: "Salas ao vivo não estão ligadas neste servidor." }, 503);
+      const b = await body(req, RoomCreate);
+      if (b instanceof Response) return b;
+      for (let i = 0; i < 3; i++) {
+        const code = newRoomCode();
+        if (await cfg.rooms.create({ code, size: b.size, level: b.level, creator: { id: user.id, name: user.username } })) {
+          return json({ code }, 201);
+        }
+      }
+      return json({ error: "Não deu pra criar a sala agora. Tenta de novo." }, 503);
     }
 
     case "GET /api/push/key":

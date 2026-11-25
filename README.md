@@ -89,6 +89,16 @@ bun run build && bunx wrangler deploy
 
 Configuração (`.env` local ou `bunx wrangler secret put …`): `GEMINI_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gerar com `generateVapid()` de `server/push.ts`).
 
+## Salas ao vivo
+
+Conversa por voz com amigos, **só em inglês**, estilo walkie-talkie (aba escondida `#salas`, com atalho no Hoje e em Situações).
+
+- Quem cria escolhe **2 ou 4 pessoas** e o nível (**Iniciante**: 3 avisos e frases de apoio; **Intermediário**: 2 avisos e um tema; **Nativo**: 1 aviso). Recebe um código de 8 letras e o link `/?sala=CÓDIGO`. Sem sala pública.
+- Segura o botão, fala, solta: o áudio (MediaRecorder, até 15 s) e a transcrição (reconhecimento en-US, no mesmo aperto) vão num quadro só. O servidor dá e tira a vez; os outros ouvem na hora. O áudio é repassado e nunca guardado.
+- Português (`src/lib/ptdetect.ts`) dá aviso; no último, a pessoa é quitada e não volta pra sala. Quem conta é o servidor.
+- 10 minutos por sala, contados no servidor; no fim, resumo com falas, palavras, tempo e avisos.
+- Regras numa máquina de estados pura (`server/room-core.ts`). No Cloudflare, cada sala é um **Durable Object** (`worker/room.ts`, SQLite + hibernação de WebSocket, binding `ROOMS` no `wrangler.toml`); no `bun dev`/`bun preview`, a mesma máquina roda na memória (`server/rooms-local.ts`).
+
 ## Estrutura
 
 ```

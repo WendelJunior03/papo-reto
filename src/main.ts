@@ -46,9 +46,14 @@ import {
   stopCar, toggle as carToggle, wakeLockAvailable,
 } from "./lib/carplayer";
 import { renderAdmin } from "./views/admin";
+import { renderRooms } from "./views/rooms";
+import { initRooms, joinRoom, roomActions, roomUi, takeRoomParam } from "./rooms";
 import { ONBOARDING_STEPS, renderOnboarding } from "./views/onboarding";
 
 let s!: AppState;
+/** Link de convite de uma Sala ao vivo (?sala=CODE): lido uma vez no boot; entra depois do login. */
+let pendingRoom = takeRoomParam();
+initRooms({ render: () => render(), toast, visible: () => s?.tab === "salas" });
 const app = document.getElementById("app")!;
 const stats = document.getElementById("stats")!;
 const toastEl = document.getElementById("toast")!;
@@ -250,6 +255,12 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
   if (online) applyBadges(meBadges.badges, meBadges.badge);
   render();
   if (s.tab === "admin") void loadAdmin();
+  if (online && pendingRoom) {
+    const code = pendingRoom;
+    pendingRoom = null;
+    setTab("salas");
+    joinRoom(code);
+  }
   if (!online) return;
   if (s.tab === "situacoes") void loadInvite();
   try {
@@ -345,6 +356,7 @@ function render(): void {
     : s.tab === "ouvir" ? renderListen(s, carStatus(), wakeLockAvailable)
     : s.tab === "historia" ? renderStory(s)
     : s.tab === "admin" && s.admin ? renderAdmin(s)
+    : s.tab === "salas" ? renderRooms(roomUi)
     : renderSituations(s, "share" in navigator);
   document.querySelectorAll<HTMLButtonElement>("nav.tabbar button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
@@ -1006,6 +1018,8 @@ function aiMic(): void {
 
 /* ---------- ações ---------- */
 const actions: Record<string, (el: HTMLElement) => void> = {
+  ...roomActions,
+  "goto-salas": () => setTab("salas"),
   say: (el) => play(findPhrase(el.dataset.id!)!.en),
   slow: (el) => play(findPhrase(el.dataset.id!)!.en, true),
   flip: (el) => {

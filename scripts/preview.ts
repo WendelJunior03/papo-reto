@@ -5,8 +5,10 @@ import { handleApi } from "../server/api";
 import { bunDb } from "../server/db-bun";
 import { parseAdmins } from "../server/admin";
 import { startLocalCron } from "./cron";
+import { localRooms, UPGRADED } from "../server/rooms-local";
 
 const dist = join(import.meta.dir, "../dist");
+const rooms = localRooms();
 const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: process.env.GEMINI_API_KEY,
   youtubeKey: process.env.YOUTUBE_API_KEY,
   anthropicKey: process.env.ANTHROPIC_API_KEY, openaiKey: process.env.OPENAI_API_KEY,
@@ -15,14 +17,18 @@ const api = { db: bunDb(), signupCode: process.env.SIGNUP_CODE, geminiKey: proce
     : undefined,
   adminUsers: parseAdmins(process.env.ADMIN_USERS),
   pix: process.env.PIX_KEY ? { key: process.env.PIX_KEY, name: process.env.PIX_NAME ?? "", city: process.env.PIX_CITY ?? "" } : undefined,
+  // Salas ao vivo na memória (no Cloudflare, é um Durable Object).
+  rooms: rooms.host,
 };
 startLocalCron(api);
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4173),
   hostname: "0.0.0.0",
+  websocket: rooms.websocket,
   async fetch(req) {
     const apiRes = await handleApi(req, api);
+    if (apiRes === UPGRADED) return; // virou WebSocket de uma sala
     if (apiRes) return apiRes;
     let urlPath = new URL(req.url).pathname;
     if (urlPath.endsWith("/")) urlPath += "index.html";
@@ -49,4 +55,5 @@ const server = Bun.serve({
   },
 });
 
+rooms.bind(server);
 console.log(`Prévia de produção em ${server.url}  (no celular, use o IP do Mac na mesma rede)`);

@@ -3,11 +3,15 @@
  * Segredos: `bunx wrangler secret put ANTHROPIC_API_KEY` e `bunx wrangler secret put SIGNUP_CODE`.
  * Banco: D1 (`bunx wrangler d1 create papo-reto` e `bunx wrangler d1 migrations apply papo-reto --remote`).
  */
-import { handleApi, type ApiConfig } from "../server/api";
+import { handleApi, type ApiConfig, type RoomsHost } from "../server/api";
 import { sendDuePushes } from "../server/push";
 import { sendDueReminders } from "../server/reminders";
 import { d1Db, type D1Database } from "../server/db";
 import { parseAdmins } from "../server/admin";
+import type { DurableObjectNamespace } from "./room";
+
+// Durable Object das Salas ao vivo (precisa estar exportado na entrada do Worker).
+export { Room } from "./room";
 
 interface Env {
   DB: D1Database;
@@ -23,6 +27,8 @@ interface Env {
   PIX_CITY?: string;
   /** Donos do app, separados por vírgula (veem o painel do dono). */
   ADMIN_USERS?: string;
+  /** Salas ao vivo (Durable Object `Room`, um por código). */
+  ROOMS?: DurableObjectNamespace;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -52,6 +58,23 @@ async function audio(req: Request, env: Env): Promise<Response> {
   return new Response(buf.slice(start, end + 1), { status: 206, headers });
 }
 
+/** Cada sala é um Durable Object com o nome do código. A API cria e encaminha o WebSocket. */
+function roomsHost(ns: DurableObjectNamespace): RoomsHost {
+  const stub = (code: string) => ns.get(ns.idFromName(code));
+  return {
+    async create(init) {
+      const res = await stub(init.code).fetch("https://sala/init", { method: "POST", body: JSON.stringify(init) });
+      return res.status === 201;
+    },
+    connect(req, code, user) {
+      const headers = new Headers(req.headers);
+      // Sempre sobrescrito aqui: quem é a pessoa vem do login, nunca do aparelho.
+      headers.set("x-room-user", encodeURIComponent(JSON.stringify({ id: user.id, name: user.username })));
+      return stub(code).fetch("https://sala/ws", { headers });
+    },
+  };
+}
+
 function config(env: Env): ApiConfig {
   return {
     db: d1Db(env.DB),
@@ -61,6 +84,7 @@ function config(env: Env): ApiConfig {
     anthropicKey: env.ANTHROPIC_API_KEY,
     openaiKey: env.OPENAI_API_KEY,
     adminUsers: parseAdmins(env.ADMIN_USERS),
+    rooms: env.ROOMS ? roomsHost(env.ROOMS) : undefined,
     pix: env.PIX_KEY ? { key: env.PIX_KEY, name: env.PIX_NAME ?? "", city: env.PIX_CITY ?? "" } : undefined,
     vapid:
       env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY

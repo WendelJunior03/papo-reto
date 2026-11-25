@@ -15,11 +15,11 @@ import type { BadgeId } from "./lib/invites";
 import { mergeStories, pickKnownPhrases, type Story } from "./lib/story";
 
 /**
- * "ouvir" (modo Ouvir no carro), "historia" (historinhas) e "admin" (painel do dono)
- * são telas cheias sem botão na barra, como "evolucao".
+ * "ouvir" (modo Ouvir no carro), "historia" (historinhas), "admin" (painel do dono) e "salas"
+ * (Salas ao vivo) são telas cheias sem botão na barra, como "evolucao".
  */
-export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "ouvir" | "historia" | "admin";
-export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "ouvir", "historia", "admin"];
+export type Tab = "hoje" | "dialogo" | "ia" | "musica" | "treino" | "situacoes" | "evolucao" | "ouvir" | "historia" | "admin" | "salas";
+export const TABS: readonly Tab[] = ["hoje", "dialogo", "ia", "musica", "treino", "situacoes", "evolucao", "ouvir", "historia", "admin", "salas"];
 export type PracticeMode = "falar" | "ouvir" | "musica";
 
 export interface Practice {
