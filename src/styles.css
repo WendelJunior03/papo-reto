@@ -637,3 +637,6 @@ nav.tabbar button svg{width:20px;height:20px}
 .plan-item>svg{width:16px;height:16px;color:var(--ultra)}
 button.plan-item:hover .plan-ck{box-shadow:inset 0 0 0 1.5px var(--ink)}
 .plan-win{font-size:14px;color:var(--n700);padding:6px 2px 4px}
+/* UX: item 6 — IA, sugestões de música e boas-vindas */
+.ai-session .ai-own-key{margin:0 0 0 auto}
+.ai-cooldown .ai-own-key{margin:0}
