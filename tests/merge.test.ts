@@ -24,12 +24,24 @@ test("sem nada no servidor, fica o do aparelho", () => {
 import { shouldShowDailySupport } from "../src/state";
 
 test("janela do PIX: uma vez por dia, só pra quem não apoiou e se tiver PIX", () => {
-  const base = { ...emptyData() };
+  const base = { ...emptyData(), visits: ["2026-11-17", "2026-11-18", "2026-11-19"] };
   expect(shouldShowDailySupport(base, "2026-11-19", true)).toBe(true);
   expect(shouldShowDailySupport({ ...base, supportPromptAt: "2026-11-19" }, "2026-11-19", true)).toBe(false);
   expect(shouldShowDailySupport({ ...base, supportPromptAt: "2026-11-18" }, "2026-11-19", true)).toBe(true);
   expect(shouldShowDailySupport({ ...base, supported: true }, "2026-11-19", true)).toBe(false);
   expect(shouldShowDailySupport(base, "2026-11-19", false)).toBe(false);
+});
+
+test("janela do PIX: novato não vê; só do 3º dia de uso em diante", () => {
+  const today = "2026-11-19";
+  const at = (visits: string[]) => shouldShowDailySupport({ ...emptyData(), visits }, today, true);
+  expect(at([])).toBe(false);
+  expect(at([today])).toBe(false); // 1º dia
+  expect(at(["2026-11-18", today])).toBe(false); // 2º dia
+  expect(at(["2026-11-18", "2026-11-18", today])).toBe(false); // mesmo dia repetido não conta
+  expect(at(["2026-11-10", "2026-11-18", today])).toBe(true); // 3º dia (não precisa ser seguido)
+  expect(at(["2026-11-10", "2026-11-18"])).toBe(true); // hoje ainda não registrado
+  expect(at(["2026-11-18", today, "2026-11-20"])).toBe(false); // dia futuro (relógio de outro aparelho) não conta
 });
 
 test("quem apoiou num aparelho fica como apoiador nos outros", () => {

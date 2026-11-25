@@ -177,8 +177,6 @@ async function start(user: string, online = true, serverAi = false, pix: PixConf
     void checkPushOn().then(loadReminder);
     if (s.tab === "ia") void refreshAiSession();
     save(user, merged);
-    // Primeira abertura do dia: janela do PIX (pra quem ainda não apoiou).
-    openDailySupport(s);
     render();
     await pushNow();
   } catch {
@@ -490,6 +488,8 @@ function toast(msg: string, ok = false): void {
 }
 
 function setTab(tab: Tab): void {
+  // Janela diária do PIX: só depois da primeira troca de aba (a pessoa já usou o app hoje).
+  if (tab !== s.tab) openDailySupport(s);
   if (s.tab === "musica" && tab !== "musica") destroyPlayer();
   if (s.tab === "ouvir" && tab !== "ouvir") stopCar();
   // A senha temporária aparece uma vez só: saiu do painel, some.
