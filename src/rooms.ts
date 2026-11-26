@@ -68,8 +68,13 @@ interface Deps {
   toast(msg: string, ok?: boolean): void;
   /** A aba Salas está aberta? */
   visible(): boolean;
+  /**
+   * Transcrever no servidor em vez do reconhecimento do navegador (iPhone: o do Safari
+   * falha da 2ª fala em diante). null = usa o do navegador.
+   */
+  transcriber(): ((audio: Uint8Array, mime: string) => Promise<string>) | null;
 }
-let deps: Deps = { render: () => {}, toast: () => {}, visible: () => false };
+let deps: Deps = { render: () => {}, toast: () => {}, visible: () => false, transcriber: () => null };
 
 export function initRooms(d: Deps): void {
   deps = d;
@@ -314,6 +319,8 @@ function scrollLog(): void {
 
 /* ---------- apertar e falar ---------- */
 interface Capture {
+  /** Transcrição no servidor (iPhone); null = reconhecimento do navegador. */
+  server: ((audio: Uint8Array, mime: string) => Promise<string>) | null;
   hold: { stop(): Promise<HoldResult>; cancel(): void } | null;
   rec: Recording | null;
   startedAt: number;
@@ -349,8 +356,11 @@ function pressStart(): void {
   roomUi.talking = room.floor?.name === roomUi.you ? "recording" : "asking";
   roomUi.partial = "";
   // Reconhecimento primeiro: no iPhone ele só liga dentro do toque.
+  // Com transcrição no servidor (iPhone), só grava: o texto vem depois, do áudio.
+  const server = canRecord() ? deps.transcriber() : null;
   capture = {
-    hold: canListen ? listenHold((p) => updatePartial(p)) : null,
+    server,
+    hold: canListen && !server ? listenHold((p) => updatePartial(p)) : null,
     rec: canRecord() ? record() : null,
     startedAt: Date.now(),
     // 15 s no máximo: solta sozinho um pouco antes do limite do servidor.
@@ -395,10 +405,18 @@ async function pressEnd(): Promise<void> {
   roomUi.talking = "sending";
   rerender();
   // Os dois terminam juntos; se um falhar, o outro vai sozinho.
-  const [heard, clip] = await Promise.all([
+  const [heard0, clip] = await Promise.all([
     c.hold ? c.hold.stop() : Promise.resolve<HoldResult>({ text: "" }),
     c.rec ? c.rec.stop() : Promise.resolve(null),
   ]);
+  let heard = heard0;
+  if (c.server && clip && clip.audio.length > 500) {
+    updatePartial("Entendendo…");
+    heard = await c.server(clip.audio, clip.mime).then(
+      (text) => ({ text }),
+      () => ({ text: "", error: "Não deu pra transcrever agora: foi só o áudio." }),
+    );
+  }
   const id = await waitFloor(2500);
   if (id === null) {
     roomUi.talking = "idle";

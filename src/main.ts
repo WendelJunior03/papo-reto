@@ -54,7 +54,7 @@ import { ONBOARDING_STEPS, renderOnboarding } from "./views/onboarding";
 let s!: AppState;
 /** Link de convite de uma Sala ao vivo (?sala=CODE): lido uma vez no boot; entra depois do login. */
 let pendingRoom = takeRoomParam();
-initRooms({ render: () => render(), toast, visible: () => s?.tab === "salas" });
+initRooms({ render: () => render(), toast, visible: () => s?.tab === "salas", transcriber: () => (recordMode() ? api.transcribe : null) });
 const app = document.getElementById("app")!;
 const stats = document.getElementById("stats")!;
 const toastEl = document.getElementById("toast")!;
@@ -799,6 +799,8 @@ interface Hold {
 }
 let hold: Hold | null = null;
 let holdAt = 0;
+/** Onde a escuta está: Diálogo ("dl") ou conversa com a IA ("ia"). */
+let holdKind: "dl" | "ia" = "dl";
 
 /**
  * No iPhone o reconhecimento do Safari ouve a 1ª fala e às vezes não ouve mais nada depois.
@@ -824,68 +826,98 @@ function recordHold(): Hold {
 }
 
 function holdLive(text: string): void {
+  if (holdKind === "ia") {
+    const input = document.getElementById("ai-input") as HTMLTextAreaElement | null;
+    if (input) input.placeholder = text;
+    return;
+  }
   const live = document.getElementById("dl-live");
   if (live) live.textContent = text;
 }
 
-function holdStart(): void {
+function holdStart(kind: "dl" | "ia"): void {
+  if (hold) return;
   const d = s.dialogue;
-  if (!d || hold) return;
+  if (kind === "dl" && !d) return;
+  holdKind = kind;
   stopAudio();
-  d.listening = true;
-  d.error = null;
   holdAt = Date.now();
+  if (kind === "dl") {
+    d!.listening = true;
+    d!.error = null;
+    document.querySelector(".dl-turn .dl-err")?.remove();
+  }
   // Sem redesenhar a tela: trocar o botão debaixo do dedo cancela o toque no iPhone.
-  document.getElementById("dl-mic")?.classList.add("on");
-  document.querySelector(".dl-turn .dl-err")?.remove();
+  document.getElementById(kind === "dl" ? "dl-mic" : "ai-mic")?.classList.add("on");
   if (recordMode()) {
     holdLive("Gravando… solte quando terminar");
     hold = recordHold();
   } else {
     holdLive("Ouvindo… solte quando terminar");
-    hold = listenHold((text) => holdLive(text || "Ouvindo… solte quando terminar"));
+    hold = listenHold((text) => {
+      if (holdKind === "ia") {
+        const input = document.getElementById("ai-input") as HTMLTextAreaElement | null;
+        if (input && text) input.value = text;
+      } else holdLive(text || "Ouvindo… solte quando terminar");
+    });
   }
 }
 
 async function holdEnd(): Promise<void> {
-  const d = s.dialogue;
   const h = hold;
   if (!h) return;
   hold = null;
-  document.getElementById("dl-mic")?.classList.remove("on");
+  const kind = holdKind;
+  document.getElementById(kind === "dl" ? "dl-mic" : "ai-mic")?.classList.remove("on");
   const quick = Date.now() - holdAt < 450;
   if (quick) h.cancel();
-  holdLive("Conferindo…");
+  holdLive(kind === "dl" ? "Conferindo…" : "Entendendo…");
   const res = quick ? { text: "" } : await h.stop();
+  const hint = quick ? "Segure o botão enquanto fala e solte no fim da frase." : res.error ?? "Não ouvi nada. Segure o botão e fale mais perto do celular.";
+  if (kind === "ia") {
+    const input = document.getElementById("ai-input") as HTMLTextAreaElement | null;
+    if (input) input.placeholder = "Escreva em inglês…";
+    if (!res.text) return toast(hint);
+    if (looksPortuguese(res.text)) {
+      if (input) input.value = "";
+      return toast("Entendi em português — fale em inglês");
+    }
+    return void sendToAi(res.text);
+  }
+  const d = s.dialogue;
   if (!d) return;
   d.listening = false;
   if (res.text) return checkAnswer([res.text]);
-  d.error = quick ? "Segure o botão enquanto fala e solte no fim da frase." : res.error ?? "Não ouvi nada. Segure o botão e fale mais perto do celular.";
+  d.error = hint;
   render();
 }
 
 // Ouvido no documento porque a tela é redesenhada.
+const holdTarget = (t: EventTarget | null): "dl" | "ia" | null =>
+  ((t as Element | null)?.closest?.("[data-hold]")?.getAttribute("data-hold") as "dl" | "ia" | undefined) ?? null;
 document.addEventListener("pointerdown", (e) => {
-  if (e.button > 0 || !(e.target as Element).closest?.("[data-hold=dl]")) return;
+  const kind = holdTarget(e.target);
+  if (e.button > 0 || !kind) return;
   e.preventDefault();
-  holdStart();
+  holdStart(kind);
 });
 const holdRelease = (): void => void holdEnd();
 document.addEventListener("pointerup", holdRelease);
 document.addEventListener("pointercancel", holdRelease);
 window.addEventListener("blur", holdRelease);
 document.addEventListener("contextmenu", (e) => {
-  if ((e.target as Element).closest?.("[data-hold=dl]")) e.preventDefault();
+  if (holdTarget(e.target)) e.preventDefault();
 });
 // Teclado: espaço ou Enter segurado no botão funciona igual.
 document.addEventListener("keydown", (e) => {
-  if ((e.key === " " || e.key === "Enter") && (e.target as Element).closest?.("[data-hold=dl]")) {
+  const kind = holdTarget(e.target);
+  if ((e.key === " " || e.key === "Enter") && kind) {
     e.preventDefault();
-    if (!e.repeat) holdStart();
+    if (!e.repeat) holdStart(kind);
   }
 });
 document.addEventListener("keyup", (e) => {
-  if ((e.key === " " || e.key === "Enter") && (e.target as Element).closest?.("[data-hold=dl]")) void holdEnd();
+  if ((e.key === " " || e.key === "Enter") && holdTarget(e.target)) void holdEnd();
 });
 
 /* ---------- conversa com IA ---------- */
@@ -1138,28 +1170,6 @@ async function sendToAi(text: string): Promise<void> {
       render();
       scrollToEnd();
     }
-  }
-}
-
-function aiMic(): void {
-  stopAudio();
-  const input = document.getElementById("ai-input") as HTMLTextAreaElement | null;
-  toast("Ouvindo… fale em inglês");
-  {
-    stopListening = listen({
-      onPartial: (text) => {
-        if (input) input.value = text;
-      },
-      onDone: (alts) => {
-        const text = alts[0] ?? "";
-        if (looksPortuguese(text)) {
-          if (input) input.value = "";
-          return toast("Entendi em português — fale em inglês (veja o teclado English no iPhone)");
-        }
-        void sendToAi(text);
-      },
-      onError: (msg) => toast(msg),
-    });
   }
 }
 
@@ -1452,7 +1462,6 @@ const actions: Record<string, (el: HTMLElement) => void> = {
     render();
     toast("Chave removida deste aparelho", true);
   },
-  "ai-mic": () => aiMic(),
   "ai-say": (el) => { const m = s.ai?.messages[Number(el.dataset.i)]; if (m) speakTts(m.content); },
   "ai-say-fix": (el) => { const m = s.ai?.messages[Number(el.dataset.i)]; if (m?.correction) speakTts(m.correction); },
   "ai-pt": (el) => {
