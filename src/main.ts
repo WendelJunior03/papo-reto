@@ -2,7 +2,7 @@ import "./styles.css";
 import { findPhrase } from "./data";
 import { esc } from "./lib/html";
 import { play, playSequence, speakTts, speakTtsSequence, stop as stopAudio } from "./lib/speech";
-import { cancelListening, listen, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
+import { canListen, cancelListening, listen, listenHold, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
 import { bestOf } from "./lib/match";
 import { plain } from "./lib/html";
 import { packs } from "./data";
@@ -21,6 +21,7 @@ import {
 import { MIN_KNOWN, type StoryLine } from "./lib/story";
 import { renderStory } from "./views/story";
 import { api, ApiError } from "./lib/api";
+import { canRecord, record } from "./lib/ptt";
 import { mergeData } from "./lib/merge";
 import { lastUser, load, loadPix, save, saveAiKey, savePix, setLastUser } from "./lib/storage";
 import { pixPayload, type PixConfig } from "./lib/pix";
@@ -264,6 +265,7 @@ async function shareInvite(): Promise<void> {
 }
 
 async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
+  watchMic();
   setLastUser(user);
   if (online) savePix(pix);
   document.body.classList.remove("auth");
@@ -382,7 +384,7 @@ function render(): void {
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
   );
   // Instalar: cartão discreto só no Hoje; "Agora não" guarda junto com a dica do iPhone.
-  installBanner.innerHTML = s.canInstall && !s.data.installHintDismissed && s.tab === "hoje"
+  installBanner.innerHTML = s.tab === "hoje" && micCard() ? micCard() : s.canInstall && !s.data.installHintDismissed && s.tab === "hoje"
     ? `<div class="wrap"><div class="install-card">${ui.download}
         <p><b>Instale o Papo Reto</b><span>Abre como app e funciona sem internet.</span></p>
         <button class="btn btn-am btn-sm" data-act="install">Instalar</button>
@@ -650,6 +652,8 @@ function setTab(tab: Tab): void {
   // A senha temporária aparece uma vez só: saiu do painel, some.
   if (s.tab === "admin" && tab !== "admin" && s.adminPanel) s.adminPanel = { ...s.adminPanel, temp: null, confirm: null };
   cancelListening();
+  hold?.cancel();
+  hold = null;
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
   s.tab = tab;
@@ -695,6 +699,61 @@ async function resetUserPassword(username: string): Promise<void> {
   if (s.tab === "admin") render();
 }
 
+/* ---------- permissão do microfone ---------- */
+/**
+ * Pede o microfone logo no começo, com um aviso na tela Hoje (o pedido precisa vir de um toque:
+ * pedir sozinho ao abrir, o iPhone recusa ou pergunta toda vez que o app abre).
+ */
+type MicState = "unknown" | "prompt" | "granted" | "denied";
+let micState: MicState = "unknown";
+let micDismissed = false;
+
+function watchMic(): void {
+  if (!canListen) return;
+  // Sem como consultar (navegador antigo): mostra o aviso uma vez; o "Liberar" resolve.
+  if (!navigator.permissions?.query) {
+    micState = "prompt";
+    return;
+  }
+  navigator.permissions
+    .query({ name: "microphone" as PermissionName })
+    .then((st) => {
+      micState = st.state as MicState;
+      st.onchange = () => {
+        micState = st.state as MicState;
+        if (s?.tab === "hoje") render();
+      };
+      if (s?.tab === "hoje") render();
+    })
+    .catch(() => {});
+}
+
+function micCard(): string {
+  if (!canListen || micDismissed || micState === "granted" || micState === "unknown") return "";
+  const denied = micState === "denied";
+  return `<div class="wrap"><div class="install-card mic-card">${ui.mic}
+      <p><b>${denied ? "Microfone bloqueado" : "Libere o microfone"}</b><span>${
+        denied
+          ? "Pra praticar falando, permita o microfone nos ajustes do navegador (no iPhone: Ajustes → Safari → Microfone)."
+          : "Assim você já fala no Diálogo, na IA e nas Salas sem travar."
+      }</span></p>
+      ${denied ? "" : `<button class="btn btn-am btn-sm" data-act="mic-allow">Liberar</button>`}
+      <button class="install-x" data-act="mic-later" aria-label="Agora não">${ui.x}</button>
+    </div></div>`;
+}
+
+async function allowMic(): Promise<void> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    for (const t of stream.getTracks()) t.stop();
+    micState = "granted";
+    toast("Microfone liberado!", true);
+  } catch {
+    micState = "denied";
+  }
+  render();
+}
+
 /* ---------- diálogo guiado ---------- */
 let stopListening: () => void = () => {};
 
@@ -729,37 +788,105 @@ function checkAnswer(alternatives: string[], spoken = true): void {
   scrollToEnd();
 }
 
-function toggleMic(): void {
+/**
+ * Segurar pra falar: aperta e o microfone liga (dentro do toque, como o iPhone exige),
+ * solta e confere. Quem decide o fim é a pessoa, não um tempo de silêncio.
+ */
+/** Uma escuta "segurando": reconhecimento do navegador ou gravação + transcrição no servidor. */
+interface Hold {
+  stop(): Promise<{ text: string; error?: string }>;
+  cancel(): void;
+}
+let hold: Hold | null = null;
+let holdAt = 0;
+
+/**
+ * No iPhone o reconhecimento do Safari ouve a 1ª fala e às vezes não ouve mais nada depois.
+ * Lá (com a IA do app ligada), grava o áudio, que funciona sempre, e o servidor transcreve.
+ */
+const recordMode = (): boolean => isIOS() && canRecord() && !!s.serverAi;
+
+function recordHold(): Hold {
+  const r = record();
+  return {
+    async stop() {
+      const clip = await r.stop();
+      if (!clip || clip.audio.length < 500) return { text: "", error: "Não ouvi nada. Segure o botão enquanto fala." };
+      holdLive("Entendendo…");
+      try {
+        return { text: await api.transcribe(clip.audio, clip.mime) };
+      } catch (e) {
+        return { text: "", error: e instanceof ApiError ? e.message : "Não deu pra entender agora. Tenta de novo." };
+      }
+    },
+    cancel: () => r.cancel(),
+  };
+}
+
+function holdLive(text: string): void {
+  const live = document.getElementById("dl-live");
+  if (live) live.textContent = text;
+}
+
+function holdStart(): void {
   const d = s.dialogue;
-  if (!d) return;
-  // Tocar de novo enquanto ouve: encerra na hora e confere o que já foi dito.
-  if (d.listening) return stopListening();
+  if (!d || hold) return;
   stopAudio();
   d.listening = true;
   d.error = null;
-  render();
-  // Liga o microfone dentro do próprio toque (o iPhone só libera nesse momento);
-  // o áudio que estivesse tocando já foi parado acima.
-  stopListening = startDialogueListening(d);
+  holdAt = Date.now();
+  // Sem redesenhar a tela: trocar o botão debaixo do dedo cancela o toque no iPhone.
+  document.getElementById("dl-mic")?.classList.add("on");
+  document.querySelector(".dl-turn .dl-err")?.remove();
+  if (recordMode()) {
+    holdLive("Gravando… solte quando terminar");
+    hold = recordHold();
+  } else {
+    holdLive("Ouvindo… solte quando terminar");
+    hold = listenHold((text) => holdLive(text || "Ouvindo… solte quando terminar"));
+  }
 }
 
-function startDialogueListening(d: NonNullable<AppState["dialogue"]>): () => void {
-  return listen({
-    onPartial: (text) => {
-      const live = document.getElementById("dl-live");
-      if (live) live.textContent = text || "Ouvindo… fale agora";
-    },
-    onDone: (alts) => {
-      d.listening = false;
-      checkAnswer(alts);
-    },
-    onError: (msg) => {
-      d.listening = false;
-      d.error = msg;
-      render();
-    },
-  });
+async function holdEnd(): Promise<void> {
+  const d = s.dialogue;
+  const h = hold;
+  if (!h) return;
+  hold = null;
+  document.getElementById("dl-mic")?.classList.remove("on");
+  const quick = Date.now() - holdAt < 450;
+  if (quick) h.cancel();
+  holdLive("Conferindo…");
+  const res = quick ? { text: "" } : await h.stop();
+  if (!d) return;
+  d.listening = false;
+  if (res.text) return checkAnswer([res.text]);
+  d.error = quick ? "Segure o botão enquanto fala e solte no fim da frase." : res.error ?? "Não ouvi nada. Segure o botão e fale mais perto do celular.";
+  render();
 }
+
+// Ouvido no documento porque a tela é redesenhada.
+document.addEventListener("pointerdown", (e) => {
+  if (e.button > 0 || !(e.target as Element).closest?.("[data-hold=dl]")) return;
+  e.preventDefault();
+  holdStart();
+});
+const holdRelease = (): void => void holdEnd();
+document.addEventListener("pointerup", holdRelease);
+document.addEventListener("pointercancel", holdRelease);
+window.addEventListener("blur", holdRelease);
+document.addEventListener("contextmenu", (e) => {
+  if ((e.target as Element).closest?.("[data-hold=dl]")) e.preventDefault();
+});
+// Teclado: espaço ou Enter segurado no botão funciona igual.
+document.addEventListener("keydown", (e) => {
+  if ((e.key === " " || e.key === "Enter") && (e.target as Element).closest?.("[data-hold=dl]")) {
+    e.preventDefault();
+    if (!e.repeat) holdStart();
+  }
+});
+document.addEventListener("keyup", (e) => {
+  if ((e.key === " " || e.key === "Enter") && (e.target as Element).closest?.("[data-hold=dl]")) void holdEnd();
+});
 
 /* ---------- conversa com IA ---------- */
 type SessionInfo = NonNullable<AppState["aiSession"]>;
@@ -1186,7 +1313,8 @@ const actions: Record<string, (el: HTMLElement) => void> = {
 
   "dl-play": (el) => play(packs[s.dialogue!.packIndex]!.chat[Number(el.dataset.line)]!.en),
   "dl-hint": () => { s.dialogue!.hint = true; render(); },
-  "dl-mic": () => toggleMic(),
+  "mic-allow": () => void allowMic(),
+  "mic-later": () => { micDismissed = true; render(); },
   "dl-pt": () => { s.showDialoguePt = !s.showDialoguePt; render(); },
   "dl-retry": () => {
     const d = s.dialogue!;

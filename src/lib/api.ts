@@ -46,7 +46,21 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data;
 }
 
+/** Áudio gravado → texto (servidor, chave do app). */
+async function transcribeAudio(audio: Uint8Array, mime: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch("./api/transcribe", { method: "POST", credentials: "same-origin", headers: { "Content-Type": mime }, body: new Blob([audio.slice()], { type: mime }) });
+  } catch {
+    throw new ApiError("Sem conexão com o servidor.", 0);
+  }
+  const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+  if (!res.ok) throw new ApiError(data.error ?? `Erro ${res.status}`, res.status);
+  return data.text ?? "";
+}
+
 export const api = {
+  transcribe: transcribeAudio,
   me: () => call<{ username: string; serverAi: boolean; push?: boolean; musicSearch?: boolean; pix: PixConfig | null; admin?: boolean;
     badges?: BadgeId[]; badge?: BadgeId | null }>("GET", "me"),
   invite: () => call<InviteInfo>("GET", "invite"),
