@@ -294,3 +294,31 @@ describe("cadastro aberto", () => {
     expect((await signup("dia3", {}, "3.3.3.3")).status).toBe(429);
   });
 });
+
+describe("transcrição do áudio (Diálogo no iPhone)", () => {
+  const send = (body: Uint8Array, type = "audio/mp4") =>
+    handleApi(
+      new Request("http://localhost/api/transcribe", { method: "POST", headers: { "Content-Type": type, cookie }, body: new Blob([body.slice()], { type }) }),
+      cfg,
+    ).then(async (r) => ({ status: r!.status, data: (await r!.json()) as Record<string, unknown> }));
+
+  test("precisa de login, da chave do app e de um áudio aceito", async () => {
+    expect((await send(new Uint8Array(1000))).status).toBe(401);
+    await call("POST", "auth/signup", { username: "ana", password: "senha-boa-123", code: "convite-123" });
+    expect((await send(new Uint8Array(1000))).status).toBe(503);
+    cfg.geminiKey = "AIza" + "x".repeat(35);
+    expect((await send(new Uint8Array(1000), "text/plain")).status).toBe(415);
+    expect((await send(new Uint8Array(400_001))).status).toBe(413);
+    expect(await send(new Uint8Array(100))).toMatchObject({ status: 200, data: { text: "" } });
+  });
+
+  test("limite por dia", async () => {
+    cfg.geminiKey = "AIza" + "x".repeat(35);
+    await call("POST", "auth/signup", { username: "bia", password: "senha-boa-123", code: "convite-123" });
+    const day = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+    for (const d of [day, new Date().toISOString().slice(0, 10)]) {
+      await cfg.db.run("INSERT OR REPLACE INTO transcribe_usage (user_id, day, count) VALUES (1, ?, 300)", d);
+    }
+    expect((await send(new Uint8Array(1000))).status).toBe(429);
+  });
+});

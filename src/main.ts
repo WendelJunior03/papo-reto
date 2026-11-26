@@ -21,6 +21,7 @@ import {
 import { MIN_KNOWN, type StoryLine } from "./lib/story";
 import { renderStory } from "./views/story";
 import { api, ApiError } from "./lib/api";
+import { canRecord, record } from "./lib/ptt";
 import { mergeData } from "./lib/merge";
 import { lastUser, load, loadPix, save, saveAiKey, savePix, setLastUser } from "./lib/storage";
 import { pixPayload, type PixConfig } from "./lib/pix";
@@ -651,6 +652,7 @@ function setTab(tab: Tab): void {
   // A senha temporária aparece uma vez só: saiu do painel, some.
   if (s.tab === "admin" && tab !== "admin" && s.adminPanel) s.adminPanel = { ...s.adminPanel, temp: null, confirm: null };
   cancelListening();
+  hold?.cancel();
   hold = null;
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
@@ -790,8 +792,36 @@ function checkAnswer(alternatives: string[], spoken = true): void {
  * Segurar pra falar: aperta e o microfone liga (dentro do toque, como o iPhone exige),
  * solta e confere. Quem decide o fim é a pessoa, não um tempo de silêncio.
  */
-let hold: ReturnType<typeof listenHold> | null = null;
+/** Uma escuta "segurando": reconhecimento do navegador ou gravação + transcrição no servidor. */
+interface Hold {
+  stop(): Promise<{ text: string; error?: string }>;
+  cancel(): void;
+}
+let hold: Hold | null = null;
 let holdAt = 0;
+
+/**
+ * No iPhone o reconhecimento do Safari ouve a 1ª fala e às vezes não ouve mais nada depois.
+ * Lá (com a IA do app ligada), grava o áudio, que funciona sempre, e o servidor transcreve.
+ */
+const recordMode = (): boolean => isIOS() && canRecord() && !!s.serverAi;
+
+function recordHold(): Hold {
+  const r = record();
+  return {
+    async stop() {
+      const clip = await r.stop();
+      if (!clip || clip.audio.length < 500) return { text: "", error: "Não ouvi nada. Segure o botão enquanto fala." };
+      holdLive("Entendendo…");
+      try {
+        return { text: await api.transcribe(clip.audio, clip.mime) };
+      } catch (e) {
+        return { text: "", error: e instanceof ApiError ? e.message : "Não deu pra entender agora. Tenta de novo." };
+      }
+    },
+    cancel: () => r.cancel(),
+  };
+}
 
 function holdLive(text: string): void {
   const live = document.getElementById("dl-live");
@@ -808,8 +838,13 @@ function holdStart(): void {
   // Sem redesenhar a tela: trocar o botão debaixo do dedo cancela o toque no iPhone.
   document.getElementById("dl-mic")?.classList.add("on");
   document.querySelector(".dl-turn .dl-err")?.remove();
-  holdLive("Ouvindo… solte quando terminar");
-  hold = listenHold((text) => holdLive(text || "Ouvindo… solte quando terminar"));
+  if (recordMode()) {
+    holdLive("Gravando… solte quando terminar");
+    hold = recordHold();
+  } else {
+    holdLive("Ouvindo… solte quando terminar");
+    hold = listenHold((text) => holdLive(text || "Ouvindo… solte quando terminar"));
+  }
 }
 
 async function holdEnd(): Promise<void> {
@@ -819,8 +854,9 @@ async function holdEnd(): Promise<void> {
   hold = null;
   document.getElementById("dl-mic")?.classList.remove("on");
   const quick = Date.now() - holdAt < 450;
+  if (quick) h.cancel();
   holdLive("Conferindo…");
-  const res = await h.stop();
+  const res = quick ? { text: "" } : await h.stop();
   if (!d) return;
   d.listening = false;
   if (res.text) return checkAnswer([res.text]);

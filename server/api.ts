@@ -44,6 +44,7 @@ import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInf
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 import { countStory, DEFAULT_STORIES_PER_DAY, handleStory, storiesToday } from "./story";
 import { geoOf, saveGeo } from "./geo";
+import { audioType, countTranscribe, MAX_AUDIO_BYTES, transcribe, TranscribeError, TRANSCRIBE_PER_DAY, transcribesToday } from "./transcribe";
 import { checkSignup, DEFAULT_SIGNUP_LIMITS, networkKey, signupDone, type SignupLimits } from "./signup-guard";
 import { CODE_RE, newRoomCode, RoomCreate, type RoomInit } from "./room-core";
 
@@ -370,6 +371,29 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
         const row2 = await db.first<SessionRow>("SELECT started_at, ends_at, messages FROM ai_sessions WHERE user_id = ?", user.id);
         return { session: sessionState(row2, now, sc) };
       });
+    }
+
+    case "POST /api/transcribe": {
+      // Áudio cru no corpo (o aparelho grava; aqui vira texto). Só com a chave do app.
+      if (!cfg.geminiKey) return json({ error: "Transcrição indisponível neste servidor." }, 503);
+      const mime = audioType(req.headers.get("content-type"));
+      if (!mime) return json({ error: "Formato de áudio não aceito." }, 415);
+      const declared = Number(req.headers.get("content-length") ?? 0);
+      if (declared > MAX_AUDIO_BYTES) return json({ error: "Áudio muito longo. Fale uma frase por vez." }, 413);
+      const audio = new Uint8Array(await req.arrayBuffer());
+      if (audio.length > MAX_AUDIO_BYTES) return json({ error: "Áudio muito longo. Fale uma frase por vez." }, 413);
+      if (audio.length < 500) return json({ text: "" });
+      if ((await transcribesToday(db, user.id)) >= TRANSCRIBE_PER_DAY) {
+        return json({ error: "Você chegou no limite de falas de hoje. Amanhã tem mais!" }, 429);
+      }
+      try {
+        const text = await transcribe(cfg.geminiKey, audio, mime);
+        await countTranscribe(db, user.id);
+        return json({ text });
+      } catch (e) {
+        if (e instanceof TranscribeError) return json({ error: e.message }, e.status);
+        throw e;
+      }
     }
 
     case "POST /api/story": {
