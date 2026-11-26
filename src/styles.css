@@ -824,3 +824,4 @@ p.story-title{font-size:clamp(24px,6.5vw,30px)}
 .mic.hold{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .mic.hold svg{pointer-events:none}
 .mic.hold.on{transform:scale(1.06)}
+.mic-card>svg{color:var(--ultra)}

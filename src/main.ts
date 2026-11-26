@@ -2,7 +2,7 @@ import "./styles.css";
 import { findPhrase } from "./data";
 import { esc } from "./lib/html";
 import { play, playSequence, speakTts, speakTtsSequence, stop as stopAudio } from "./lib/speech";
-import { cancelListening, listen, listenHold, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
+import { canListen, cancelListening, listen, listenHold, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
 import { bestOf } from "./lib/match";
 import { plain } from "./lib/html";
 import { packs } from "./data";
@@ -264,6 +264,7 @@ async function shareInvite(): Promise<void> {
 }
 
 async function start(user: string, online = true, serverAi = false, pix: PixConfig | null = loadPix(), push = false): Promise<void> {
+  watchMic();
   setLastUser(user);
   if (online) savePix(pix);
   document.body.classList.remove("auth");
@@ -382,7 +383,7 @@ function render(): void {
     b.setAttribute("aria-selected", String(b.dataset.tab === s.tab)),
   );
   // Instalar: cartão discreto só no Hoje; "Agora não" guarda junto com a dica do iPhone.
-  installBanner.innerHTML = s.canInstall && !s.data.installHintDismissed && s.tab === "hoje"
+  installBanner.innerHTML = s.tab === "hoje" && micCard() ? micCard() : s.canInstall && !s.data.installHintDismissed && s.tab === "hoje"
     ? `<div class="wrap"><div class="install-card">${ui.download}
         <p><b>Instale o Papo Reto</b><span>Abre como app e funciona sem internet.</span></p>
         <button class="btn btn-am btn-sm" data-act="install">Instalar</button>
@@ -694,6 +695,61 @@ async function resetUserPassword(username: string): Promise<void> {
   }
   p.busy = false;
   if (s.tab === "admin") render();
+}
+
+/* ---------- permissão do microfone ---------- */
+/**
+ * Pede o microfone logo no começo, com um aviso na tela Hoje (o pedido precisa vir de um toque:
+ * pedir sozinho ao abrir, o iPhone recusa ou pergunta toda vez que o app abre).
+ */
+type MicState = "unknown" | "prompt" | "granted" | "denied";
+let micState: MicState = "unknown";
+let micDismissed = false;
+
+function watchMic(): void {
+  if (!canListen) return;
+  // Sem como consultar (navegador antigo): mostra o aviso uma vez; o "Liberar" resolve.
+  if (!navigator.permissions?.query) {
+    micState = "prompt";
+    return;
+  }
+  navigator.permissions
+    .query({ name: "microphone" as PermissionName })
+    .then((st) => {
+      micState = st.state as MicState;
+      st.onchange = () => {
+        micState = st.state as MicState;
+        if (s?.tab === "hoje") render();
+      };
+      if (s?.tab === "hoje") render();
+    })
+    .catch(() => {});
+}
+
+function micCard(): string {
+  if (!canListen || micDismissed || micState === "granted" || micState === "unknown") return "";
+  const denied = micState === "denied";
+  return `<div class="wrap"><div class="install-card mic-card">${ui.mic}
+      <p><b>${denied ? "Microfone bloqueado" : "Libere o microfone"}</b><span>${
+        denied
+          ? "Pra praticar falando, permita o microfone nos ajustes do navegador (no iPhone: Ajustes → Safari → Microfone)."
+          : "Assim você já fala no Diálogo, na IA e nas Salas sem travar."
+      }</span></p>
+      ${denied ? "" : `<button class="btn btn-am btn-sm" data-act="mic-allow">Liberar</button>`}
+      <button class="install-x" data-act="mic-later" aria-label="Agora não">${ui.x}</button>
+    </div></div>`;
+}
+
+async function allowMic(): Promise<void> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    for (const t of stream.getTracks()) t.stop();
+    micState = "granted";
+    toast("Microfone liberado!", true);
+  } catch {
+    micState = "denied";
+  }
+  render();
 }
 
 /* ---------- diálogo guiado ---------- */
@@ -1221,6 +1277,8 @@ const actions: Record<string, (el: HTMLElement) => void> = {
 
   "dl-play": (el) => play(packs[s.dialogue!.packIndex]!.chat[Number(el.dataset.line)]!.en),
   "dl-hint": () => { s.dialogue!.hint = true; render(); },
+  "mic-allow": () => void allowMic(),
+  "mic-later": () => { micDismissed = true; render(); },
   "dl-pt": () => { s.showDialoguePt = !s.showDialoguePt; render(); },
   "dl-retry": () => {
     const d = s.dialogue!;
