@@ -151,7 +151,7 @@ export function renderAi(s: AppState): string {
         ? ""
         : `<form class="ai-compose" data-form="ai-send">
             <textarea id="ai-input" rows="1" lang="en-US" autocorrect="off" autocapitalize="sentences" placeholder="Escreva em inglês…" ${chat.loading ? "disabled" : ""}>${esc(chat.draft)}</textarea>
-            ${canListen ? `<button type="button" class="btn btn-ghost btn-ic" data-act="ai-mic" aria-label="Falar">${ui.mic}</button>` : ""}
+            ${canListen ? `<button type="button" class="btn btn-ghost btn-ic mic-hold" id="ai-mic" data-hold="ia" aria-label="Segure pra falar" title="Segure pra falar">${ui.mic}</button>` : ""}
             <button type="submit" class="btn btn-ultra btn-ic" aria-label="Enviar" ${chat.loading ? "disabled" : ""}>${ui.arrow}</button>
           </form>
           <button class="link-btn subtle" data-act="ai-reset">Nova conversa</button>`
