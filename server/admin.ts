@@ -6,6 +6,7 @@
  */
 import { streak } from "../src/lib/schedule";
 import { hashPassword } from "./auth";
+import { placeLabel } from "./geo";
 import type { Db } from "./db";
 
 /** Dias contados no horário de Brasília (UTC−3, sem horário de verão desde 2019). */
@@ -81,6 +82,9 @@ interface Row {
   ai7: number;
   invites: number;
   invited_by: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
 }
 
 async function loadUsers(db: Db, now: number): Promise<(Row & Saved & { lastStudy: string | null })[]> {
@@ -90,8 +94,9 @@ async function loadUsers(db: Db, now: number): Promise<(Row & Saved & { lastStud
        (SELECT COUNT(*) FROM push_subs p WHERE p.user_id = u.id) AS push,
        (SELECT COALESCE(SUM(count), 0) FROM ai_usage g WHERE g.user_id = u.id AND g.day >= ?) AS ai7,
        (SELECT COUNT(*) FROM invites i WHERE i.invited_by = u.id) AS invites,
-       (SELECT p.username FROM invites i JOIN users p ON p.id = i.invited_by WHERE i.user_id = u.id) AS invited_by
-     FROM users u LEFT JOIN user_activity a ON a.user_id = u.id`,
+       (SELECT p.username FROM invites i JOIN users p ON p.id = i.invited_by WHERE i.user_id = u.id) AS invited_by,
+       g.city, g.region, g.country
+     FROM users u LEFT JOIN user_activity a ON a.user_id = u.id LEFT JOIN user_geo g ON g.user_id = u.id`,
     since7,
   );
   return rows.map((r) => {
@@ -146,6 +151,8 @@ export async function adminStats(db: Db, now = Date.now()) {
     supporters: users.filter((u) => u.supported).length,
     songsPracticed: users.reduce((n, u) => n + u.songs, 0),
     phrasesKnown: users.reduce((n, u) => n + u.known, 0),
+    /** De onde vem a turma: as cidades com mais gente (aproximado, pela conexão). */
+    places: topPlaces(users),
   };
 }
 
@@ -170,6 +177,8 @@ export async function adminUsers(db: Db, now = Date.now()) {
       invites: u.invites,
       /** Quem convidou (null = entrou com o código geral). */
       invitedBy: u.invited_by,
+      /** Cidade aproximada pela conexão ("Uberlândia, MG"); null até o próximo acesso. */
+      place: placeLabel(u),
     }))
     .sort((a, b) =>
       (b.lastSeen ?? "").localeCompare(a.lastSeen ?? "") || (b.lastStudy ?? "").localeCompare(a.lastStudy ?? "") || a.username.localeCompare(b.username));
@@ -202,4 +211,13 @@ export async function resetPassword(db: Db, username: string): Promise<{ usernam
   await db.run("UPDATE users SET pass_hash = ?, pass_salt = ?, failed_logins = 0, locked_until = 0 WHERE id = ?", hash, salt, user.id);
   await db.run("DELETE FROM sessions WHERE user_id = ?", user.id);
   return { username: user.username, password };
+}
+
+function topPlaces(users: { city: string | null; region: string | null; country: string | null }[], max = 8) {
+  const count = new Map<string, number>();
+  for (const u of users) {
+    const p = placeLabel(u);
+    if (p) count.set(p, (count.get(p) ?? 0) + 1);
+  }
+  return [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, max).map(([place, users]) => ({ place, users }));
 }

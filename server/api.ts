@@ -43,6 +43,7 @@ import { HHMM, validTimeZone } from "./reminders";
 import { findLyrics, lyricsById, MusicError, searchVideos, videoIdFrom, videoInfo } from "./music";
 import { DEFAULT_SESSION, sessionState, type SessionConfig, type SessionRow } from "./session";
 import { countStory, DEFAULT_STORIES_PER_DAY, handleStory, storiesToday } from "./story";
+import { geoOf, saveGeo } from "./geo";
 import { checkSignup, DEFAULT_SIGNUP_LIMITS, networkKey, signupDone, type SignupLimits } from "./signup-guard";
 import { CODE_RE, newRoomCode, RoomCreate, type RoomInit } from "./room-core";
 
@@ -217,6 +218,7 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
       const user = (await db.first<{ id: number }>("SELECT id FROM users WHERE username = ?", b.username))!;
       if (inviter !== null) await recordInvitedBy(db, user.id, inviter);
       await signupDone(db, net);
+      await saveGeo(db, user.id, geoOf(req));
       const s = await createSession(db, user.id);
       return json({ username: b.username }, 201, { "Set-Cookie": sessionCookie(req, s.token, s.expires) });
     }
@@ -276,6 +278,7 @@ export async function handleApi(req: Request, cfg: ApiConfig): Promise<Response 
   switch (route) {
     case "GET /api/me": {
       await touchSeen(db, user.id);
+      await saveGeo(db, user.id, geoOf(req));
       const { badges, badge } = await badgeState(db, user.id);
       return json({
         username: user.username,

@@ -48,6 +48,7 @@ function userRow(u: AdminUser, s: AppState): string {
     : `<button class="link-btn" data-act="admin-reset" data-user="${name}">Gerar senha temporária</button>`;
   return `<tr class="${confirming ? "on" : ""}">
     <th scope="row">${name}${u.username.toLowerCase() === s.user.toLowerCase() ? ` <small class="mono">você</small>` : ""}</th>
+    <td>${u.place ? esc(u.place) : "—"}</td>
     <td>${fmtDate(u.createdAt)}</td>
     <td>${ago(u.lastSeen)}</td>
     <td>${studyDay(u.lastStudy)}</td>
@@ -107,6 +108,17 @@ export function renderAdmin(s: AppState): string {
     <p class="evo-hint">Só mensagens com a chave do app (quem usa a própria chave não entra). ${st.aiSessionsToday} ${st.aiSessionsToday === 1 ? "pessoa abriu" : "pessoas abriram"} sessão hoje.</p>
   </div>`;
 
+  const most = st.places[0]?.users ?? 0;
+  const places = `<div class="evo-card">
+    <div class="evo-head"><span class="eyebrow">De onde vem a turma</span><span class="mono">aproximado</span></div>
+    ${st.places.length
+      ? `<ul class="adm-places">${st.places
+          .map((x) => `<li><span>${esc(x.place)}</span><i style="width:${Math.max(6, Math.round((x.users / most) * 100))}%"></i><b>${x.users}</b></li>`)
+          .join("")}</ul>`
+      : `<p class="evo-hint">As cidades aparecem conforme as pessoas abrem o app.</p>`}
+    <p class="evo-hint">Cidade e estado vêm da conexão de internet (sem GPS). Pode mostrar a cidade da operadora em vez da exata.</p>
+  </div>`;
+
   const temp = p.temp
     ? `<div class="adm-temp" role="status">
         <span class="mono">Senha temporária de ${esc(p.temp.username)}</span>
@@ -130,7 +142,7 @@ export function renderAdmin(s: AppState): string {
     <div class="adm-table">
       <table>
         <thead><tr>
-          <th scope="col">Usuário</th><th scope="col">Desde</th><th scope="col">Último acesso</th><th scope="col">Último estudo</th>
+          <th scope="col">Usuário</th><th scope="col">Cidade</th><th scope="col">Desde</th><th scope="col">Último acesso</th><th scope="col">Último estudo</th>
           <th scope="col" class="num">Frases</th><th scope="col" class="num">Dias</th><th scope="col" class="num">Seguidos</th>
           <th scope="col" class="num">IA 7d</th><th scope="col" class="num">Convidou</th><th scope="col">Convite de</th><th scope="col">Apoio</th><th scope="col">Aviso</th><th scope="col"><span class="sr">Ação</span></th>
         </tr></thead>
@@ -141,6 +153,6 @@ export function renderAdmin(s: AppState): string {
 
   return `<div class="page evo">
     ${back}
-    <section class="band"><div class="wrap">${head}<div class="evo-grid">${kpis}${signups}${ai}${users}</div></div></section>
+    <section class="band"><div class="wrap">${head}<div class="evo-grid">${kpis}${places}${signups}${ai}${users}</div></div></section>
   </div>`;
 }

@@ -56,5 +56,6 @@ function codeField(v: AuthView): string {
   return `<label class="field"><span>Código de convite${v.open ? " <em class=\"opt\">(opcional)</em>" : ""}</span>
       <input id="auth-code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" ${v.open ? "" : "required"} value="${esc(v.code)}">
       <small>${hint}</small></label>
+    <p class="auth-privacy">Pra saber de onde vem a turma, o app guarda só a sua cidade aproximada (pela conexão de internet). Nada de GPS.</p>
     <div class="hp" aria-hidden="true"><label>Site<input name="website" tabindex="-1" autocomplete="off"></label></div>`;
 }

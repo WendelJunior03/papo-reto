@@ -118,7 +118,7 @@ describe("números e usuários", () => {
     const a = users.find((u) => u.username === "ana");
     expect(a).toMatchObject({ known: 2, days: 3, streak: 3, supporter: true, push: true, ai7d: 7, lastStudy: today });
     expect(typeof a.lastSeen).toBe("string");
-    expect(Object.keys(a).sort()).toEqual(["ai7d", "createdAt", "days", "invitedBy", "invites", "known", "lastSeen", "lastStudy", "push", "streak", "supporter", "username"]);
+    expect(Object.keys(a).sort()).toEqual(["ai7d", "createdAt", "days", "invitedBy", "invites", "known", "lastSeen", "lastStudy", "place", "push", "streak", "supporter", "username"]);
     expect(users.find((u) => u.username === "bia")).toMatchObject({ known: 0, days: 0, lastSeen: null, push: false, supporter: false });
   });
 
