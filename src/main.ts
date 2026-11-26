@@ -2,7 +2,7 @@ import "./styles.css";
 import { findPhrase } from "./data";
 import { esc } from "./lib/html";
 import { play, playSequence, speakTts, speakTtsSequence, stop as stopAudio } from "./lib/speech";
-import { cancelListening, listen, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
+import { cancelListening, listen, listenHold, looksPortuguese, PORTUGUESE_HELP } from "./lib/listen";
 import { bestOf } from "./lib/match";
 import { plain } from "./lib/html";
 import { packs } from "./data";
@@ -650,6 +650,7 @@ function setTab(tab: Tab): void {
   // A senha temporária aparece uma vez só: saiu do painel, some.
   if (s.tab === "admin" && tab !== "admin" && s.adminPanel) s.adminPanel = { ...s.adminPanel, temp: null, confirm: null };
   cancelListening();
+  hold = null;
   if (s.dialogue) s.dialogue.listening = false;
   stopAudio();
   s.tab = tab;
@@ -729,37 +730,71 @@ function checkAnswer(alternatives: string[], spoken = true): void {
   scrollToEnd();
 }
 
-function toggleMic(): void {
+/**
+ * Segurar pra falar: aperta e o microfone liga (dentro do toque, como o iPhone exige),
+ * solta e confere. Quem decide o fim é a pessoa, não um tempo de silêncio.
+ */
+let hold: ReturnType<typeof listenHold> | null = null;
+let holdAt = 0;
+
+function holdLive(text: string): void {
+  const live = document.getElementById("dl-live");
+  if (live) live.textContent = text;
+}
+
+function holdStart(): void {
   const d = s.dialogue;
-  if (!d) return;
-  // Tocar de novo enquanto ouve: encerra na hora e confere o que já foi dito.
-  if (d.listening) return stopListening();
+  if (!d || hold) return;
   stopAudio();
   d.listening = true;
   d.error = null;
-  render();
-  // Liga o microfone dentro do próprio toque (o iPhone só libera nesse momento);
-  // o áudio que estivesse tocando já foi parado acima.
-  stopListening = startDialogueListening(d);
+  holdAt = Date.now();
+  // Sem redesenhar a tela: trocar o botão debaixo do dedo cancela o toque no iPhone.
+  document.getElementById("dl-mic")?.classList.add("on");
+  document.querySelector(".dl-turn .dl-err")?.remove();
+  holdLive("Ouvindo… solte quando terminar");
+  hold = listenHold((text) => holdLive(text || "Ouvindo… solte quando terminar"));
 }
 
-function startDialogueListening(d: NonNullable<AppState["dialogue"]>): () => void {
-  return listen({
-    onPartial: (text) => {
-      const live = document.getElementById("dl-live");
-      if (live) live.textContent = text || "Ouvindo… fale agora";
-    },
-    onDone: (alts) => {
-      d.listening = false;
-      checkAnswer(alts);
-    },
-    onError: (msg) => {
-      d.listening = false;
-      d.error = msg;
-      render();
-    },
-  });
+async function holdEnd(): Promise<void> {
+  const d = s.dialogue;
+  const h = hold;
+  if (!h) return;
+  hold = null;
+  document.getElementById("dl-mic")?.classList.remove("on");
+  const quick = Date.now() - holdAt < 450;
+  holdLive("Conferindo…");
+  const res = await h.stop();
+  if (!d) return;
+  d.listening = false;
+  if (res.text) return checkAnswer([res.text]);
+  d.error = quick ? "Segure o botão enquanto fala e solte no fim da frase." : res.error ?? "Não ouvi nada. Segure o botão e fale mais perto do celular.";
+  render();
 }
+
+// Ouvido no documento porque a tela é redesenhada.
+document.addEventListener("pointerdown", (e) => {
+  if (e.button > 0 || !(e.target as Element).closest?.("[data-hold=dl]")) return;
+  e.preventDefault();
+  holdStart();
+});
+const holdRelease = (): void => void holdEnd();
+document.addEventListener("pointerup", holdRelease);
+document.addEventListener("pointercancel", holdRelease);
+window.addEventListener("blur", holdRelease);
+document.addEventListener("contextmenu", (e) => {
+  if ((e.target as Element).closest?.("[data-hold=dl]")) e.preventDefault();
+});
+// Teclado: espaço ou Enter segurado no botão funciona igual.
+document.addEventListener("keydown", (e) => {
+  if ((e.key === " " || e.key === "Enter") && (e.target as Element).closest?.("[data-hold=dl]")) {
+    e.preventDefault();
+    if (!e.repeat) holdStart();
+  }
+});
+document.addEventListener("keyup", (e) => {
+  if ((e.key === " " || e.key === "Enter") && (e.target as Element).closest?.("[data-hold=dl]")) void holdEnd();
+});
 
 /* ---------- conversa com IA ---------- */
 type SessionInfo = NonNullable<AppState["aiSession"]>;
@@ -1186,7 +1221,6 @@ const actions: Record<string, (el: HTMLElement) => void> = {
 
   "dl-play": (el) => play(packs[s.dialogue!.packIndex]!.chat[Number(el.dataset.line)]!.en),
   "dl-hint": () => { s.dialogue!.hint = true; render(); },
-  "dl-mic": () => toggleMic(),
   "dl-pt": () => { s.showDialoguePt = !s.showDialoguePt; render(); },
   "dl-retry": () => {
     const d = s.dialogue!;

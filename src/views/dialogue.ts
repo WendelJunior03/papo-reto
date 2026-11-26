@@ -62,8 +62,8 @@ export function renderDialogue(s: AppState): string {
         ${d.hint ? `<p class="dl-hint" lang="en">${highlight(line.en)}</p>` : `<button class="link-btn" data-act="dl-hint">Ver a frase em inglês</button>`}
         ${
           canListen
-            ? `<button class="mic ${d.listening ? "on" : ""}" data-act="dl-mic" aria-label="${d.listening ? "Parar" : "Falar"}">${ui.mic}</button>
-               <p class="dl-live" id="dl-live" aria-live="polite">${d.listening ? "Ouvindo… fale agora" : "Toque e fale a frase"}</p>`
+            ? `<button class="mic hold ${d.listening ? "on" : ""}" id="dl-mic" data-hold="dl" aria-label="Segure pra falar">${ui.mic}</button>
+               <p class="dl-live" id="dl-live" aria-live="polite">${d.listening ? "Ouvindo… solte quando terminar" : "Segure o botão e fale a frase"}</p>`
             : ""
         }
         <form class="dl-type" data-form="dl-type">

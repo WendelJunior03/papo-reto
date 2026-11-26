@@ -62,8 +62,21 @@ let ended: (() => void) | null = null;
 /** Quem recebe os eventos da escuta atual (as anteriores são ignoradas). */
 let current: { onResult: (e: RecognitionEvent) => void; onError: (code: string) => void; onEnd: () => void } | null = null;
 
+/**
+ * O reconhecedor da vez. Com o anterior já parado, cria um novo a cada escuta: no iPhone,
+ * reaproveitar o mesmo depois da primeira fala às vezes não ouve mais nada (a 2ª vez "morre").
+ * Enquanto o anterior ainda solta o microfone, reaproveita (criar outro aí é que dá conflito).
+ */
 function recognizer(): Recognition {
-  if (rec) return rec;
+  if (rec && running) return rec;
+  if (rec) {
+    rec.onresult = rec.onerror = rec.onend = null;
+    try {
+      rec.abort();
+    } catch {
+      // já estava parado
+    }
+  }
   rec = new Ctor!();
   rec.lang = "en-US";
   rec.interimResults = true;
